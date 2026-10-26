@@ -1,0 +1,19 @@
+{
+  "name": "arca",
+  "version": "1.0.0",
+  "description": "Self-hosted software vault: installers, disk images and license keys for software you own.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server.js",
+    "dev": "ARCA_PASSWORD=dev node --watch --no-warnings=ExperimentalWarning server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "express": "^4.22.3"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  }
+}
