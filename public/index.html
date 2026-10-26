@@ -490,8 +490,8 @@ const Demo = (() => {
   addApp({ name: 'Xcode', developer: 'Apple', category: 'Development', platform: 'macOS', age: 25, description: 'Kept for building on the Monterey machine.' }, [
     { version: '14.2', released: '2022-12-13', min_os: '12.5', arch: 'Universal', files: [['Xcode_14.2.xip', 7.4 * GB]] },
   ]);
-  devices.push({ id: id(), name: 'Mac Pro (Late 2013)', model: 'MacPro6,1', platform: 'macOS', os_version: '12.7.6', arch: 'Intel', notes: 'Edit suite. D500 GPUs.', created_at: t(40) });
-  devices.push({ id: id(), name: 'MacBook Air M2', model: 'Mac14,2', platform: 'macOS', os_version: '27.0', arch: 'Apple Silicon', notes: '', created_at: t(40) });
+  devices.push({ id: id(), name: 'Mac Pro (Late 2013)', model: 'MacPro6,1', serial: 'F5KN81ZXF693', platform: 'macOS', os_version: '12.7.6', arch: 'Intel', notes: 'Edit suite. D500 GPUs.', created_at: t(40) });
+  devices.push({ id: id(), name: 'MacBook Air M2', model: 'Mac14,2', serial: 'H4WQ9X2LJK', platform: 'macOS', os_version: '27.0', arch: 'Apple Silicon', notes: '', created_at: t(40) });
   devices.push({ id: id(), name: 'Retro PC', model: 'Pentium 4', platform: 'Windows', os_version: '5.1', arch: 'x86', notes: 'Windows XP SP3', created_at: t(40) });
 
   const appById = (i) => apps.find(a => a.id === i);
@@ -539,8 +539,8 @@ const Demo = (() => {
     if (M('GET', /^licenses\/[^/]+\/reveal$/)) return { key: licenses.find(x => x.id === seg[1]).key };
     if (M('DELETE', /^licenses\/[^/]+$/)) { licenses.splice(licenses.findIndex(l => l.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices$/)) return devices.slice().sort((a, b) => a.name.localeCompare(b.name));
-    if (M('POST', /^devices$/)) { if (!body.name?.trim()) err('Name is required'); const d = { id: id(), model: '', platform: 'macOS', os_version: '', arch: '', notes: '', ...pickF(body, ['name', 'model', 'platform', 'os_version', 'arch', 'notes']), created_at: t(0) }; devices.push(d); return d; }
-    if (M('PUT', /^devices\/[^/]+$/)) { const d = devices.find(x => x.id === seg[1]); Object.assign(d, pickF(body, ['name', 'model', 'platform', 'os_version', 'arch', 'notes'])); return d; }
+    if (M('POST', /^devices$/)) { if (!body.name?.trim()) err('Name is required'); const d = { id: id(), model: '', serial: '', platform: 'macOS', os_version: '', arch: '', notes: '', ...pickF(body, ['name', 'model', 'serial', 'platform', 'os_version', 'arch', 'notes']), created_at: t(0) }; devices.push(d); return d; }
+    if (M('PUT', /^devices\/[^/]+$/)) { const d = devices.find(x => x.id === seg[1]); Object.assign(d, pickF(body, ['name', 'model', 'serial', 'platform', 'os_version', 'arch', 'notes'])); return d; }
     if (M('DELETE', /^devices\/[^/]+$/)) { devices.splice(devices.findIndex(d => d.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices\/[^/]+\/compatible$/)) {
       const d = devices.find(x => x.id === seg[1]) || err('Device not found');
@@ -795,7 +795,7 @@ const Views = {
     const row = (a) => `<div class="lrow" data-act="open-app" data-id="${a.id}"><div class="ic">${iconHTML(a)}</div><div class="tx"><b>${esc(a.name)}</b><span>${esc(a.versions.map(v => v.version).join(', ') || 'No versions')}</span></div>${a.status === 'yes' ? `<span class="pill good num">Runs v${esc(a.best)}</span>` : a.status === 'unknown' ? '<span class="pill warn">Add OS range</span>' : '<span class="pill bad">No compatible version</span>'}</div>`;
     return `<div class="dhead">
         <div class="big" style="background:var(--tile);display:grid;place-items:center;box-shadow:none">${ic(/pro/i.test(d.name) ? 'tower' : 'device', 'i" style="width:52px;height:52px;stroke-width:1.4')}</div>
-        <div class="who"><h2>${esc(d.name)}</h2><div class="sub">${esc(d.platform)} ${esc(d.os_version)}${d.arch ? ' · ' + esc(d.arch) : ''}${d.model ? ' · ' + esc(d.model) : ''}</div>${d.notes ? `<p class="hint" style="margin:0">${esc(d.notes)}</p>` : ''}</div>
+        <div class="who"><h2>${esc(d.name)}</h2><div class="sub">${esc(d.platform)} ${esc(d.os_version)}${d.arch ? ' · ' + esc(d.arch) : ''}${d.model ? ' · ' + esc(d.model) : ''}</div>${d.serial ? `<p class="hint" style="margin:0 0 6px">Serial <button class="hash" style="font-size:13px" data-act="copy" data-label="Serial number copied" data-text="${esc(d.serial)}" title="Copy serial number">${esc(d.serial)}</button></p>` : ''}${d.notes ? `<p class="hint" style="margin:0">${esc(d.notes)}</p>` : ''}</div>
         <div class="dactions"><button class="btn ghost" data-act="edit-device">${ic('edit')} Edit</button></div>
       </div>
       <div class="dgrid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">
@@ -1061,13 +1061,14 @@ function guessDeviceArch(model) {
 function deviceModal(existing) {
   modal({
     title: existing ? 'Edit device' : 'Add a device',
-    lead: 'Use the OS version as shown in About This Mac or winver, for example 12.7.6.',
+    lead: 'You find the OS version, model identifier and serial number under Apple menu › About This Mac › More Info › System Report (or winver on Windows).',
     fields: [
       { name: 'name', label: 'Name', ph: 'Mac Pro (Late 2013)', full: true, required: true },
       { name: 'platform', label: 'Platform', type: 'select', options: PLATFORMS },
       { name: 'os_version', label: 'OS version', ph: '12.7.6' },
       { name: 'arch', label: 'Processor', type: 'select', options: DEVICE_ARCHS.macOS },
       { name: 'model', label: 'Model identifier', ph: 'MacPro6,1' },
+      { name: 'serial', label: 'Serial number', ph: 'F5KN1234F693', mono: true, full: true },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true },
     ],
     values: existing || {},
@@ -1181,7 +1182,7 @@ document.addEventListener('click', async (e) => {
         render(); break;
       }
       case 'copy-key': { const k = S.revealed[id] || (await api('GET', `api/licenses/${id}/reveal`)).key; copyText(k, 'Key copied'); break; }
-      case 'copy': copyText(el.dataset.text, 'Checksum copied'); break;
+      case 'copy': copyText(el.dataset.text, el.dataset.label || 'Checksum copied'); break;
       case 'new-device': deviceModal(); break;
       case 'edit-device': deviceModal(S.device); break;
       case 'verify': await api('POST', 'api/verify'); pollVerify(); break;

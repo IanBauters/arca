@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS licenses (
 );
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, model TEXT DEFAULT '', platform TEXT DEFAULT 'macOS',
-  os_version TEXT DEFAULT '', arch TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL
+  os_version TEXT DEFAULT '', arch TEXT DEFAULT '', serial TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_versions_app ON versions(app_id);
 CREATE INDEX IF NOT EXISTS idx_files_version ON files(version_id);
@@ -105,7 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 `);
 
 // migrations for databases created by earlier versions
-if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = 'arch'").get()) db.exec("ALTER TABLE devices ADD COLUMN arch TEXT DEFAULT ''");
+for (const col of ['arch', 'serial']) if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = ?").get(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT DEFAULT ''`);
 
 const q = (sql) => db.prepare(sql);
 const now = () => new Date().toISOString();
@@ -474,21 +474,21 @@ app.get('/api/licenses/:id/reveal', (req, res) => {
 app.delete('/api/licenses/:id', (req, res) => { q('DELETE FROM licenses WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
 
 // devices + compatibility
-const DEV_FIELDS = ['name', 'model', 'platform', 'os_version', 'arch', 'notes'];
+const DEV_FIELDS = ['name', 'model', 'serial', 'platform', 'os_version', 'arch', 'notes'];
 app.get('/api/devices', (req, res) => res.json(q('SELECT * FROM devices ORDER BY name COLLATE NOCASE').all()));
 app.post('/api/devices', (req, res) => {
   const b = pick(req.body || {}, DEV_FIELDS);
   if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Name is required' });
   const id = uid();
-  q('INSERT INTO devices (id,name,model,platform,os_version,arch,notes,created_at) VALUES (:id,:name,:model,:platform,:os_version,:arch,:notes,:t)').run({
-    id, name: b.name.trim(), model: b.model || '', platform: b.platform || 'macOS', os_version: b.os_version || '', arch: b.arch || '', notes: b.notes || '', t: now(),
+  q('INSERT INTO devices (id,name,model,serial,platform,os_version,arch,notes,created_at) VALUES (:id,:name,:model,:serial,:platform,:os_version,:arch,:notes,:t)').run({
+    id, name: b.name.trim(), model: b.model || '', serial: String(b.serial || '').trim().toUpperCase(), platform: b.platform || 'macOS', os_version: b.os_version || '', arch: b.arch || '', notes: b.notes || '', t: now(),
   });
   res.status(201).json(q('SELECT * FROM devices WHERE id = ?').get(id));
 });
 app.put('/api/devices/:id', (req, res) => {
   const d = need(q('SELECT * FROM devices WHERE id = ?').get(req.params.id), 'Device');
   const b = { ...d, ...pick(req.body || {}, DEV_FIELDS) };
-  q('UPDATE devices SET name=:name, model=:model, platform=:platform, os_version=:os_version, arch=:arch, notes=:notes WHERE id=:id').run({ ...pick(b, DEV_FIELDS), id: d.id });
+  q('UPDATE devices SET name=:name, model=:model, serial=:serial, platform=:platform, os_version=:os_version, arch=:arch, notes=:notes WHERE id=:id').run({ ...pick(b, DEV_FIELDS), serial: String(b.serial || '').trim().toUpperCase(), id: d.id });
   res.json(q('SELECT * FROM devices WHERE id = ?').get(d.id));
 });
 app.delete('/api/devices/:id', (req, res) => { q('DELETE FROM devices WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
