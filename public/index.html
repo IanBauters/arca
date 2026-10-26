@@ -48,7 +48,9 @@ button { cursor: pointer; }
 svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* window */
-.app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100%; background: var(--surface); }
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100vh; height: 100dvh; background: var(--surface); }
+/* Sidebar is exactly one window tall; only the content column scrolls, so the storage card and Log out stay at the bottom. */
+.side { height: 100%; }
 
 /* sidebar */
 .side { display: flex; flex-direction: column; gap: 6px; padding: 28px 14px 20px; border-right: 1px solid var(--line); min-height: 0; overflow-y: auto; }
@@ -279,6 +281,7 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 }
 @media (max-width: 860px) {
   .app { grid-template-columns: minmax(0, 1fr); }
+  .side { height: auto; }
   .side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; flex-direction: row; justify-content: space-around; padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); border-right: 0; border-top: 1px solid var(--line); background: var(--surface); overflow: visible; gap: 0; }
   .brand, .side-spacer, .store-card, .logout { display: none; }
   .nav { flex-direction: column; gap: 3px; padding: 6px 8px; font-size: 10.5px; flex: 1; align-items: center; text-align: center; }
