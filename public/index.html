@@ -820,6 +820,9 @@ const Views = {
       <div class="panel"><div class="panel-h"><h3>Integrity check</h3></div>
         <p>Re-reads every archived file and compares it to the SHA-256 recorded at upload. Run it after moving disks or every few months to catch bit rot early.</p>
         <div id="verifyBox">${verifyBox(st.verify || {}, st)}</div></div>
+      <div class="panel"><div class="panel-h"><h3>App Info for Mac</h3></div>
+        <p>A small AppleScript that reads an app's version, minimum macOS and architecture. Copy its result, then paste it anywhere in Arca (⌘V) to add the app with everything filled in. Open the file in Script Editor and choose File › Export › Application to keep it in your Dock.</p>
+        <button class="btn ghost" data-act="get-appinfo">${ic('download')} Download App Info</button></div>
       <div class="panel"><div class="panel-h"><h3>Backups</h3></div>
         <p>Back up both folders with Hyper Backup. The library folder holds the installers in plain <span class="mono">App/Version/file</span> folders with an <span class="mono">_arca.json</span> next to them, so they stay usable even without Arca. The data folder holds the database and <span class="mono">secret.key</span>; without that key, stored license keys cannot be decrypted.</p>
         <button class="btn ghost" data-act="export">${ic('download')} Export catalog (JSON, no keys)</button></div>
@@ -912,7 +915,7 @@ function modal({ title, lead = '', fields = [], values = {}, body = '', submit =
   </form>`;
   document.body.appendChild(el);
   const form = el.querySelector('form');
-  el.addEventListener('mousedown', (e) => { if (e.target === el) closeModal(); });
+  el.addEventListener('mousedown', (e) => { if (e.target === el) { S.pendingVersion = null; closeModal(); } });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {}; fields.forEach(f => { const inp = form.elements[f.name]; data[f.name] = f.type === 'checkbox' ? inp.checked : f.type === 'file' ? inp.files[0] : inp.value.trim(); });
@@ -943,6 +946,7 @@ function appModal(existing) {
   modal({
     title: existing ? 'Edit app' : 'Add software',
     lead: existing ? '' : 'Start with the app, then add each version you own and upload its files.',
+    body: existing ? '' : `<div class="tip">${ic('info')}<span>Paste the result of <b>App Info</b> (⌘V) to fill this in. <button type="button" class="link" data-act="get-appinfo" style="font-size:inherit">Download App Info</button></span></div>`,
     fields: APP_FIELDS,
     values: existing || {},
     submit: existing ? 'Save' : 'Add app',
@@ -971,8 +975,8 @@ function versionModal(existing) {
       { name: 'max_os', label: `Last ${a.platform} it runs on`, ph: a.platform === 'macOS' ? '12' : '' },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true, ph: 'Known issues, why you keep this one, library compatibility…' },
     ],
-    values: existing || {},
-    body: '<p class="hint" id="archNote" style="margin:10px 0 0" hidden></p>',
+    values: existing || takePendingVersion(),
+    body: '<p class="hint" id="archNote" style="margin:10px 0 0" hidden></p>' + (existing ? '' : `<div class="tip">${ic('info')}<span>Paste the result of <b>App Info</b> (⌘V) to fill this in. <button type="button" class="link" data-act="get-appinfo" style="font-size:inherit">Download App Info</button></span></div>`),
     submit: existing ? 'Save' : 'Add & upload files',
     onSubmit: async (d) => {
       const v = existing ? await api('PUT', 'api/versions/' + existing.id, d) : await api('POST', `api/apps/${a.id}/versions`, d);
@@ -1094,6 +1098,69 @@ function deviceModal(existing) {
   if (existing?.arch) f.elements.arch.value = existing.arch;
 }
 
+
+/* ============ App Info paste-to-fill ============ */
+// Reads the text that the App Info script (public/tools/App-Info.applescript) puts on the clipboard.
+function parseAppInfo(text) {
+  const t = String(text || '').replace(/\r/g, '\n');
+  if (!/^\s*Version:/m.test(t) || !/^\s*(Minimum macOS|Architecture):/m.test(t)) return null;
+  const line = (label) => (t.match(new RegExp('^\\s*' + label + ':\\s*(.+)$', 'm')) || [])[1]?.trim() || '';
+  const verLine = line('Version');
+  const ver = verLine.match(/^([^\s(]+)(?:\s*\(build\s*([^)]+)\))?/i) || [];
+  const archLine = line('Architecture');
+  const arch = ['Universal', 'Apple Silicon', 'Intel 64-bit', 'Intel 32-bit', 'PowerPC'].find(a => archLine.startsWith(a)) || '';
+  const num = (s) => (s.match(/^(\d+(?:\.\d+)*)/) || [])[1] || '';
+  const bundle = line('Bundle ID');
+  const parts = bundle.split('.');
+  const vendor = parts.length > 2 && /^(com|org|net|io|co|de|nl|be|fr|uk|us|app)$/i.test(parts[0]) ? parts[1] : '';
+  return {
+    name: t.split('\n').map(x => x.trim()).find(Boolean) || '',
+    developer: vendor ? (vendor.length <= 3 ? vendor.toUpperCase() : vendor[0].toUpperCase() + vendor.slice(1)) : '',
+    version: ver[1] && ver[1] !== 'not' ? ver[1] : '',
+    build: ver[2] || '',
+    min_os: num(line('Minimum macOS')),
+    max_os: num(line('Last macOS')),
+    arch,
+    bundle_id: bundle,
+  };
+}
+function versionFromInfo(info) {
+  return { version: info.version, min_os: info.min_os, max_os: info.max_os, arch: info.arch, notes: [info.build && `Build ${info.build}`, info.bundle_id && `Bundle ID ${info.bundle_id}`].filter(Boolean).join('\n') };
+}
+function takePendingVersion() { const v = S.pendingVersion || {}; S.pendingVersion = null; return v; }
+function fillForm(form, values) {
+  for (const [k, v] of Object.entries(values)) {
+    const el = form.elements[k];
+    if (!el || v === '' || v == null) continue;
+    if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === v)) continue;
+    el.value = v;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+document.addEventListener('paste', (e) => {
+  const info = parseAppInfo(e.clipboardData?.getData('text'));
+  if (!info) return;
+  const form = $('#modal form');
+  if (!form) {
+    if (e.target.closest?.('input,textarea')) return;
+    e.preventDefault();
+    S.pendingVersion = versionFromInfo(info);
+    appModal();
+    fillForm($('#modal form'), { name: info.name, developer: info.developer, platform: 'macOS' });
+    toast(`Filled in from App Info. Add ${info.name}, then the version follows.`);
+    return;
+  }
+  e.preventDefault();
+  if (form.elements.version) {
+    fillForm(form, versionFromInfo(info));
+    if (form.elements.notes && !form.elements.notes.value) form.elements.notes.value = versionFromInfo(info).notes;
+  } else if (form.elements.name && form.elements.category) {
+    fillForm(form, { name: info.name, developer: form.elements.developer.value ? '' : info.developer, platform: 'macOS' });
+    S.pendingVersion = versionFromInfo(info);
+  } else return;
+  toast('Filled in from App Info');
+});
+
 /* ============ actions ============ */
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -1126,13 +1193,17 @@ document.addEventListener('click', async (e) => {
       case 'verify': await api('POST', 'api/verify'); pollVerify(); break;
       case 'theme': store.set('theme', el.dataset.t); applyTheme(); render(); break;
       case 'export': if (S.demo) toast('Export works once Arca runs on your NAS'); else location.href = 'api/export'; break;
-      case 'close': closeModal(); break;
+      case 'get-appinfo':
+        if (S.demo) { toast('The download works once Arca runs on your NAS'); break; }
+        { const a = document.createElement('a'); a.href = 'tools/App-Info.applescript'; a.download = 'App Info.applescript'; document.body.appendChild(a); a.click(); a.remove(); }
+        break;
+      case 'close': S.pendingVersion = null; closeModal(); break;
       case 'logout': await api('POST', 'api/logout'); location.reload(); break;
     }
   } catch (err) { toast(err.message); }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { S.pendingVersion = null; closeModal(); }
   if (e.key === 'Enter' && e.target.matches('[data-act="open-app"],[data-act="open-device"]') && e.target.tagName !== 'BUTTON') e.target.click();
   if (e.key === '/' && !e.target.closest('input,textarea,select')) { e.preventDefault(); $('#search')?.focus(); }
 });
