@@ -160,6 +160,13 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .ico img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ico::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 80% at 20% 0%, rgba(255,255,255,.28), rgba(255,255,255,0) 55%); pointer-events: none; }
 .ico.has-img::after { display: none; }
+/* Uploaded icons keep their own shape (classic Mac OS X icons are rarely rounded squares):
+   no crop, no clip, transparency preserved, shadow follows the artwork's outline. */
+.ico.has-img { overflow: visible; background: none; }
+.ico.has-img img { object-fit: contain; filter: drop-shadow(0 2px 3px rgba(16,24,40,.22)); }
+:is(.card .art, .lrow .ic, .krow .ic, .dhead .big):has(> .ico.has-img) { border-radius: 0; overflow: visible; box-shadow: none; background: none; }
+.card .art:has(> .ico.has-img) { background: var(--tile); border-radius: 12px; padding: 14%; }
+.card .art:has(> .ico.has-img) img { filter: drop-shadow(0 6px 10px rgba(16,24,40,.25)); }
 
 /* library */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 22px; }
@@ -450,10 +457,10 @@ const Demo = (() => {
   addApp({ name: 'Adobe Photoshop CS6', developer: 'Adobe', category: 'Graphics', platform: 'macOS', age: 9, description: 'Perpetual licence from the boxed edition. Runs under macOS up to Mojave with the Java 6 runtime.' }, [
     { version: '13.0.6', released: '2014-02-01', min_os: '10.6.8', max_os: '10.14', arch: 'Intel', files: [['Photoshop_13_LS16.dmg', 1.2 * GB, 'disk-image'], ['Photoshop 13.0.6 update.dmg', 210 * MB, 'update'], ['Box scan front.jpg', 4 * MB, 'artwork']] },
   ], [{ label: 'Retail box serial', key: '1330-1047-2871-5523-9917-4410', source: 'Retail box', purchased: '2012-09-15', registered_to: 'Ian Bauters' }]);
-  addApp({ name: 'Microsoft Office 2011', developer: 'Microsoft', category: 'Productivity', platform: 'macOS', age: 12, description: 'Home & Student, three installs. Disc ripped to ISO.' }, [
+  addApp({ name: 'Microsoft Office 2011', developer: 'Microsoft', category: 'Productivity', platform: 'macOS', age: 12, icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><path d='M24 34 78 20 104 36 50 50z' fill='%23f6a63a'/><path d='M24 34 50 50 50 112 24 96z' fill='%23d9771c'/><path d='M50 50 104 36 104 98 50 112z' fill='%23f28a1e'/><path d='M60 62 94 53 94 70 60 79z' fill='%23ffffff' opacity='.9'/><path d='M60 86 84 80 84 86 60 92z' fill='%23ffffff' opacity='.6'/><path d='M24 34 78 20 104 36 50 50z' fill='none' stroke='%23b85f12' stroke-width='1.5' stroke-linejoin='round'/><path d='M50 50v62' stroke='%23b85f12' stroke-width='1.5'/></svg>", description: 'Home & Student, three installs. Disc ripped to ISO.' }, [
     { version: '14.7.7', released: '2017-09-12', min_os: '10.5.8', max_os: '10.14', arch: 'Intel', files: [['Office 2011 Home & Student.iso', 1.0 * GB, 'disk-image'], ['Office 2011 14.7.7 Update.dmg', 120 * MB, 'update']] },
   ], [{ label: 'Product key (disc sleeve)', key: 'KFXT4-BW8Y9-4QJXR-PWT2D-7GM8M', source: 'Retail disc', purchased: '2011-02-20' }]);
-  addApp({ name: 'Myst Masterpiece Edition', developer: 'Cyan', category: 'Games', platform: 'Windows', age: 14, description: 'The CD-ROM classic. ISO plus the original manual scan.' }, [
+  addApp({ name: 'Myst Masterpiece Edition', developer: 'Cyan', category: 'Games', platform: 'Windows', age: 14, icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><defs><radialGradient id='g' cx='.38' cy='.32' r='.75'><stop offset='0' stop-color='%23ffffff'/><stop offset='.45' stop-color='%23d9dee6'/><stop offset='.7' stop-color='%23b8c6e0'/><stop offset='.85' stop-color='%23e6d2f0'/><stop offset='1' stop-color='%23a9b4c4'/></radialGradient></defs><circle cx='64' cy='64' r='58' fill='url%28%23g%29' stroke='%238a94a6' stroke-width='1.5'/><circle cx='64' cy='64' r='20' fill='%23eef1f5' stroke='%239aa3b2' stroke-width='1.5'/><circle cx='64' cy='64' r='8' fill='%23ffffff' stroke='%238a94a6' stroke-width='1.5'/><path d='M30 40 A40 40 0 0 1 58 24' stroke='%23ffffff' stroke-width='5' fill='none' stroke-linecap='round' opacity='.8'/></svg>", description: 'The CD-ROM classic. ISO plus the original manual scan.' }, [
     { version: '1.0', released: '2000-05-01', min_os: '5.1', arch: 'x86', files: [['MYST_ME.iso', 640 * MB, 'disk-image'], ['Myst manual.pdf', 9 * MB, 'manual']] },
   ]);
   addApp({ name: 'DaVinci Resolve', developer: 'Blackmagic Design', category: 'Video', platform: 'macOS', age: 3, description: 'Kept for the Mac Pro 2013 because newer builds dropped its GPUs.' }, [
@@ -907,7 +914,7 @@ const APP_FIELDS = [
   { name: 'platform', label: 'Platform', type: 'select', options: PLATFORMS },
   { name: 'website', label: 'Website', ph: 'https://' },
   { name: 'description', label: 'Notes', type: 'textarea', full: true, ph: 'Where it came from, what it needs, anything future-you should know.' },
-  { name: 'icon', label: 'Icon (square image)', type: 'file', accept: 'image/*', full: true },
+  { name: 'icon', label: 'Icon (PNG with transparency works best, any shape)', type: 'file', accept: 'image/*', full: true },
 ];
 function appModal(existing) {
   modal({
