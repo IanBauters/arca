@@ -39,7 +39,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -49,10 +49,6 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 
 /* window */
 .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100%; background: var(--surface); }
-@media (min-width: 1280px) {
-  body { padding: 20px max(20px, env(safe-area-inset-right, 0px)) 20px max(20px, env(safe-area-inset-left, 0px)); }
-  .app { max-width: 1480px; margin: 0 auto; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 80px rgba(16,24,40,.12); }
-}
 
 /* sidebar */
 .side { display: flex; flex-direction: column; gap: 6px; padding: 28px 14px 20px; border-right: 1px solid var(--line); min-height: 0; overflow-y: auto; }
@@ -84,7 +80,6 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .sq.primary { background: var(--accent); color: #fff; }
 .search { display: flex; align-items: center; gap: 10px; background: var(--tile); border-radius: 12px; padding: 0 14px; height: 44px; width: min(280px, 34vw); color: var(--muted); }
 .search input { border: 0; background: none; outline: none; flex: 1; min-width: 0; font-size: 15px; color: var(--ink); }
-.avatar { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 600; color: #fff; background: linear-gradient(140deg, #2b3140, #4a5468); }
 .content { padding: 30px 40px 48px; }
 .demo-note { margin: 0 40px; margin-top: 18px; padding: 10px 14px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink); font-size: 13px; display: flex; gap: 10px; align-items: center; }
 .demo-note svg { color: var(--accent); }
@@ -113,9 +108,10 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .link { border: 0; background: none; color: var(--accent); font-size: 13.5px; padding: 0; }
 .ov-main { container-type: inline-size; min-width: 0; }
 .cats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.cards.recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@container (min-width: 520px) { .cards.recent { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cards.recent > :nth-child(n+7) { display: none; } }
-@container (min-width: 740px) { .cats, .cards.recent { grid-template-columns: repeat(4, minmax(0, 1fr)); } .cards.recent > :nth-child(n+7) { display: flex; } }
+@container (min-width: 740px) { .cats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* Recently added: as many columns as fit, always exactly two rows (extra cards collapse into hidden rows). */
+.cards.recent { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); grid-template-rows: auto auto; grid-auto-rows: 0; row-gap: 0; overflow: hidden; padding: 4px; margin: -4px; }
+.cards.recent > .card { margin-bottom: 18px; }
 .cat { display: flex; align-items: center; gap: 10px; padding: 16px 14px; min-width: 0; border-radius: var(--r-md); border: 0; background: var(--tile); font-size: 14.5px; font-weight: 500; text-align: left; color: var(--ink); }
 .cat svg { color: var(--muted); width: 20px; height: 20px; }
 .cat .cn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -293,7 +289,6 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
   .head { padding: 18px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); top: env(safe-area-inset-top, 0px); flex-wrap: wrap; }
   .head h1 { font-size: 27px; }
   .search { order: 5; width: 100%; }
-  .avatar { display: none; }
   .content { padding: 22px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)); }
   .demo-note { margin-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
   .ov-rail { grid-template-columns: minmax(0, 1fr); }
@@ -599,7 +594,6 @@ function shell() {
         <h1 id="title">Overview</h1>
         <button class="sq primary" data-act="new-app" aria-label="Add software" title="Add software">${ic('plus')}</button>
         <label class="search">${ic('search')}<input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search the vault"></label>
-        <div class="avatar" aria-hidden="true">${ic('vault')}</div>
       </header>
       ${S.demo ? `<div class="demo-note">${ic('info')}<span>You're looking at example data. Run Arca in Docker on your NAS to keep your own installers and keys.</span></div>` : ''}
       <div class="content" id="view"></div>
@@ -674,7 +668,7 @@ const Views = {
     if (!apps.length) return `<div class="empty"><span class="logo">${ic('vault')}</span><h3>Your vault is empty</h3><p>Add the software you own, upload its installers and disk images, and keep its license keys next to it. Older versions stay downloadable for as long as your NAS runs.</p><button class="btn" data-act="new-app">${ic('plus')} Add your first app</button></div>`;
     const counts = Object.fromEntries((s.categories || []).map(c => [c.category, c.n]));
     const topCats = CATEGORIES.slice().sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0)).slice(0, 4);
-    const recentApps = apps.slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8);
+    const recentApps = apps.slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 16);
     const v = s.verify || {};
     const pct = v.total ? Math.round(v.done / v.total * 100) : 0;
     return `<div class="ov">
