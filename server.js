@@ -21,7 +21,18 @@ const MEDIA_DIR = path.join(DATA_DIR, 'media');
 const TMP_DIR = path.join(LIBRARY_DIR, '.arca-tmp');
 const PASSWORD = process.env.ARCA_PASSWORD || '';
 
-for (const d of [DATA_DIR, LIBRARY_DIR, MEDIA_DIR, TMP_DIR]) fs.mkdirSync(d, { recursive: true });
+for (const d of [DATA_DIR, LIBRARY_DIR, MEDIA_DIR, TMP_DIR]) {
+  try {
+    fs.mkdirSync(d, { recursive: true });
+    fs.accessSync(d, fs.constants.W_OK);
+  } catch (e) {
+    const who = typeof process.getuid === 'function' ? `${process.getuid()}:${process.getgid()}` : 'unknown';
+    console.error(`[arca] Cannot write to ${d} (${e.code}). Arca runs as uid:gid ${who}.`);
+    console.error('[arca] On Synology, give that DSM user Read/Write on the shared folder (Control Panel > Shared Folder > Edit > Permissions),');
+    console.error('[arca] or grant it with: synoacltool -add <folder> user:<dsm-user>:allow:rwxpdDaARWcCo:fd--');
+    process.exit(1);
+  }
+}
 
 // ---------- secret (encrypts license keys + signs sessions) ----------
 function loadSecret() {
