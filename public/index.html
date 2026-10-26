@@ -386,8 +386,31 @@ function cmpVer(a, b) {
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x < y ? -1 : 1; }
   return 0;
 }
+const ARCHS = {
+  macOS: ['', 'Universal', 'Apple Silicon', 'Intel 64-bit', 'Intel 32-bit', 'PowerPC'],
+  Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'],
+};
+const DEVICE_ARCHS = { macOS: ['', 'Apple Silicon', 'Intel', 'PowerPC'], Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'] };
+// Apple: support.apple.com/102527 — macOS 26 is the last release for Intel Macs; Rosetta 2 runs Intel apps on Apple Silicon through macOS 27.
+const MAC_ARCH_RULES = {
+  'Universal': { note: 'Runs natively on Intel and Apple Silicon. No end date is known yet.' },
+  'Apple Silicon': { min_os: '11.0', note: 'Needs a Mac with Apple Silicon (macOS 11 Big Sur or later). No end date is known yet.' },
+  'Intel 64-bit': { max_os: '27', note: 'Runs natively on Intel Macs up to macOS 26, and through Rosetta 2 on Apple Silicon up to macOS 27. From macOS 28 Rosetta remains only for certain older games.' },
+  'Intel': { max_os: '27', note: 'Runs natively on Intel Macs up to macOS 26, and through Rosetta 2 on Apple Silicon up to macOS 27.' },
+  'Intel 32-bit': { max_os: '10.14.6', note: '32-bit apps stopped working in macOS 10.15 Catalina, so 10.14 Mojave is the last.' },
+  'PowerPC': { max_os: '10.6.8', note: 'Runs on PowerPC Macs, and on Intel Macs through Rosetta 1 up to 10.6 Snow Leopard.' },
+};
+function archFits(vArch, dArch) {
+  if (!vArch || !dArch) return true;
+  if (vArch === 'Apple Silicon') return dArch === 'Apple Silicon';
+  if (/^Intel/.test(vArch)) return dArch !== 'PowerPC';
+  if (vArch === 'x64') return dArch !== 'x86';
+  if (vArch === 'ARM') return dArch === 'ARM';
+  return true;
+}
 function compat(v, app, d) {
   if (app.platform !== d.platform) return 'no';
+  if (!archFits(v.arch, d.arch)) return 'no';
   if (!d.os_version || (!v.min_os && !v.max_os)) return 'unknown';
   if (v.min_os) { const c = cmpVer(d.os_version, v.min_os); if (c === null) return 'unknown'; if (c < 0) return 'no'; }
   if (v.max_os) { const depth = String(v.max_os).split(/[^\d]+/).filter(Boolean).length; const dev = String(d.os_version).split(/[^\d]+/).filter(Boolean).slice(0, depth).join('.'); const c = cmpVer(dev, v.max_os); if (c === null) return 'unknown'; if (c > 0) return 'no'; }
@@ -449,32 +472,32 @@ const Demo = (() => {
   addApp({ name: 'Final Cut Pro', developer: 'Apple', category: 'Video', platform: 'macOS', featured: 1, age: 1,
     description: 'Professional video editing. Copies archived straight from Applications with Finder › Compress, so the App Store receipt stays inside the bundle.', website: 'https://www.apple.com/final-cut-pro/' }, [
     { version: '10.6.2', released: '2022-04-12', min_os: '11.5.1', arch: 'Universal', notes: 'Newest version I own that still runs on the Mac Pro under Monterey.', files: [['Final Cut Pro 10.6.2.zip', 3.4 * GB]] },
-    { version: '10.4.10', released: '2020-11-12', min_os: '10.14.6', max_os: '12', arch: 'Intel', notes: 'Stable on the Mac Pro 2013. Libraries from 10.5+ cannot be opened here.', files: [['Final Cut Pro 10.4.10.zip', 3.1 * GB], ['ProVideoFormats 2.2.zip', 41 * MB, 'update']] },
+    { version: '10.4.10', released: '2020-11-12', min_os: '10.14.6', max_os: '27', arch: 'Intel 64-bit', notes: 'Stable on the Mac Pro 2013. Libraries from 10.5+ cannot be opened here.', files: [['Final Cut Pro 10.4.10.zip', 3.1 * GB], ['ProVideoFormats 2.2.zip', 41 * MB, 'update']] },
   ], [{ label: 'Mac App Store purchase', key: 'Apple ID purchase, receipt in bundle (order MKZ8Q2P1)', source: 'Mac App Store', purchased: '2017-06-03', registered_to: 'Ian' }]);
   addApp({ name: 'Logic Pro', developer: 'Apple', category: 'Audio', platform: 'macOS', age: 6, description: 'Music production. Additional sound library archived separately.' }, [
     { version: '10.7.9', released: '2023-05-09', min_os: '12.3', arch: 'Universal', files: [['Logic Pro 10.7.9.zip', 1.9 * GB], ['Logic Sound Library.zip', 62 * GB, 'other']] },
   ]);
   addApp({ name: 'Adobe Photoshop CS6', developer: 'Adobe', category: 'Graphics', platform: 'macOS', age: 9, description: 'Perpetual licence from the boxed edition. Runs under macOS up to Mojave with the Java 6 runtime.' }, [
-    { version: '13.0.6', released: '2014-02-01', min_os: '10.6.8', max_os: '10.14', arch: 'Intel', files: [['Photoshop_13_LS16.dmg', 1.2 * GB, 'disk-image'], ['Photoshop 13.0.6 update.dmg', 210 * MB, 'update'], ['Box scan front.jpg', 4 * MB, 'artwork']] },
+    { version: '13.0.6', released: '2014-02-01', min_os: '10.6.8', max_os: '10.14.6', arch: 'Intel 32-bit', files: [['Photoshop_13_LS16.dmg', 1.2 * GB, 'disk-image'], ['Photoshop 13.0.6 update.dmg', 210 * MB, 'update'], ['Box scan front.jpg', 4 * MB, 'artwork']] },
   ], [{ label: 'Retail box serial', key: '1330-1047-2871-5523-9917-4410', source: 'Retail box', purchased: '2012-09-15', registered_to: 'Ian Bauters' }]);
   addApp({ name: 'Microsoft Office 2011', developer: 'Microsoft', category: 'Productivity', platform: 'macOS', age: 12, icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><path d='M24 34 78 20 104 36 50 50z' fill='%23f6a63a'/><path d='M24 34 50 50 50 112 24 96z' fill='%23d9771c'/><path d='M50 50 104 36 104 98 50 112z' fill='%23f28a1e'/><path d='M60 62 94 53 94 70 60 79z' fill='%23ffffff' opacity='.9'/><path d='M60 86 84 80 84 86 60 92z' fill='%23ffffff' opacity='.6'/><path d='M24 34 78 20 104 36 50 50z' fill='none' stroke='%23b85f12' stroke-width='1.5' stroke-linejoin='round'/><path d='M50 50v62' stroke='%23b85f12' stroke-width='1.5'/></svg>", description: 'Home & Student, three installs. Disc ripped to ISO.' }, [
-    { version: '14.7.7', released: '2017-09-12', min_os: '10.5.8', max_os: '10.14', arch: 'Intel', files: [['Office 2011 Home & Student.iso', 1.0 * GB, 'disk-image'], ['Office 2011 14.7.7 Update.dmg', 120 * MB, 'update']] },
+    { version: '14.7.7', released: '2017-09-12', min_os: '10.5.8', max_os: '10.14.6', arch: 'Intel 32-bit', files: [['Office 2011 Home & Student.iso', 1.0 * GB, 'disk-image'], ['Office 2011 14.7.7 Update.dmg', 120 * MB, 'update']] },
   ], [{ label: 'Product key (disc sleeve)', key: 'KFXT4-BW8Y9-4QJXR-PWT2D-7GM8M', source: 'Retail disc', purchased: '2011-02-20' }]);
   addApp({ name: 'Myst Masterpiece Edition', developer: 'Cyan', category: 'Games', platform: 'Windows', age: 14, icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><defs><radialGradient id='g' cx='.38' cy='.32' r='.75'><stop offset='0' stop-color='%23ffffff'/><stop offset='.45' stop-color='%23d9dee6'/><stop offset='.7' stop-color='%23b8c6e0'/><stop offset='.85' stop-color='%23e6d2f0'/><stop offset='1' stop-color='%23a9b4c4'/></radialGradient></defs><circle cx='64' cy='64' r='58' fill='url%28%23g%29' stroke='%238a94a6' stroke-width='1.5'/><circle cx='64' cy='64' r='20' fill='%23eef1f5' stroke='%239aa3b2' stroke-width='1.5'/><circle cx='64' cy='64' r='8' fill='%23ffffff' stroke='%238a94a6' stroke-width='1.5'/><path d='M30 40 A40 40 0 0 1 58 24' stroke='%23ffffff' stroke-width='5' fill='none' stroke-linecap='round' opacity='.8'/></svg>", description: 'The CD-ROM classic. ISO plus the original manual scan.' }, [
     { version: '1.0', released: '2000-05-01', min_os: '5.1', arch: 'x86', files: [['MYST_ME.iso', 640 * MB, 'disk-image'], ['Myst manual.pdf', 9 * MB, 'manual']] },
   ]);
   addApp({ name: 'DaVinci Resolve', developer: 'Blackmagic Design', category: 'Video', platform: 'macOS', age: 3, description: 'Kept for the Mac Pro 2013 because newer builds dropped its GPUs.' }, [
-    { version: '17.4.6', released: '2022-03-24', min_os: '10.15', max_os: '12', arch: 'Intel', files: [['DaVinci_Resolve_17.4.6_Mac.zip', 2.6 * GB]] },
+    { version: '17.4.6', released: '2022-03-24', min_os: '10.15', max_os: '12', arch: 'Intel 64-bit', files: [['DaVinci_Resolve_17.4.6_Mac.zip', 2.6 * GB]] },
   ]);
   addApp({ name: 'Little Snitch', developer: 'Objective Development', category: 'Utilities', platform: 'macOS', age: 18, description: 'Outbound firewall. Version 4 licence still covers this machine.' }, [
-    { version: '4.6.4', released: '2021-03-01', min_os: '10.11', max_os: '10.15', arch: 'Intel', files: [['LittleSnitch-4.6.4.dmg', 38 * MB, 'disk-image']] },
+    { version: '4.6.4', released: '2021-03-01', min_os: '10.11', max_os: '10.15', arch: 'Intel 64-bit', files: [['LittleSnitch-4.6.4.dmg', 38 * MB, 'disk-image']] },
   ], [{ label: 'Single user licence', key: 'LS4-9F3K-77QD-2MXA-PL0E', source: 'Developer site', purchased: '2018-11-02', email: 'ian@example.com' }]);
   addApp({ name: 'Xcode', developer: 'Apple', category: 'Development', platform: 'macOS', age: 25, description: 'Kept for building on the Monterey machine.' }, [
     { version: '14.2', released: '2022-12-13', min_os: '12.5', arch: 'Universal', files: [['Xcode_14.2.xip', 7.4 * GB]] },
   ]);
-  devices.push({ id: id(), name: 'Mac Pro (Late 2013)', model: 'MacPro6,1', platform: 'macOS', os_version: '12.7.6', notes: 'Edit suite. D500 GPUs.', created_at: t(40) });
-  devices.push({ id: id(), name: 'MacBook Air M2', model: 'Mac14,2', platform: 'macOS', os_version: '15.6', notes: '', created_at: t(40) });
-  devices.push({ id: id(), name: 'Retro PC', model: 'Pentium 4', platform: 'Windows', os_version: '5.1', notes: 'Windows XP SP3', created_at: t(40) });
+  devices.push({ id: id(), name: 'Mac Pro (Late 2013)', model: 'MacPro6,1', platform: 'macOS', os_version: '12.7.6', arch: 'Intel', notes: 'Edit suite. D500 GPUs.', created_at: t(40) });
+  devices.push({ id: id(), name: 'MacBook Air M2', model: 'Mac14,2', platform: 'macOS', os_version: '27.0', arch: 'Apple Silicon', notes: '', created_at: t(40) });
+  devices.push({ id: id(), name: 'Retro PC', model: 'Pentium 4', platform: 'Windows', os_version: '5.1', arch: 'x86', notes: 'Windows XP SP3', created_at: t(40) });
 
   const appById = (i) => apps.find(a => a.id === i);
   function hydrate(a, full) {
@@ -521,8 +544,8 @@ const Demo = (() => {
     if (M('GET', /^licenses\/[^/]+\/reveal$/)) return { key: licenses.find(x => x.id === seg[1]).key };
     if (M('DELETE', /^licenses\/[^/]+$/)) { licenses.splice(licenses.findIndex(l => l.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices$/)) return devices.slice().sort((a, b) => a.name.localeCompare(b.name));
-    if (M('POST', /^devices$/)) { if (!body.name?.trim()) err('Name is required'); const d = { id: id(), model: '', platform: 'macOS', os_version: '', notes: '', ...pickF(body, ['name', 'model', 'platform', 'os_version', 'notes']), created_at: t(0) }; devices.push(d); return d; }
-    if (M('PUT', /^devices\/[^/]+$/)) { const d = devices.find(x => x.id === seg[1]); Object.assign(d, pickF(body, ['name', 'model', 'platform', 'os_version', 'notes'])); return d; }
+    if (M('POST', /^devices$/)) { if (!body.name?.trim()) err('Name is required'); const d = { id: id(), model: '', platform: 'macOS', os_version: '', arch: '', notes: '', ...pickF(body, ['name', 'model', 'platform', 'os_version', 'arch', 'notes']), created_at: t(0) }; devices.push(d); return d; }
+    if (M('PUT', /^devices\/[^/]+$/)) { const d = devices.find(x => x.id === seg[1]); Object.assign(d, pickF(body, ['name', 'model', 'platform', 'os_version', 'arch', 'notes'])); return d; }
     if (M('DELETE', /^devices\/[^/]+$/)) { devices.splice(devices.findIndex(d => d.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices\/[^/]+\/compatible$/)) {
       const d = devices.find(x => x.id === seg[1]) || err('Device not found');
@@ -778,7 +801,7 @@ const Views = {
     const row = (a) => `<div class="lrow" data-act="open-app" data-id="${a.id}"><div class="ic">${iconHTML(a)}</div><div class="tx"><b>${esc(a.name)}</b><span>${esc(a.versions.map(v => v.version).join(', ') || 'No versions')}</span></div>${a.status === 'yes' ? `<span class="pill good num">Runs v${esc(a.best)}</span>` : a.status === 'unknown' ? '<span class="pill warn">Add OS range</span>' : '<span class="pill bad">No compatible version</span>'}</div>`;
     return `<div class="dhead">
         <div class="big" style="background:var(--tile);display:grid;place-items:center;box-shadow:none">${ic(/pro/i.test(d.name) ? 'tower' : 'device', 'i" style="width:52px;height:52px;stroke-width:1.4')}</div>
-        <div class="who"><h2>${esc(d.name)}</h2><div class="sub">${esc(d.platform)} ${esc(d.os_version)}${d.model ? ' · ' + esc(d.model) : ''}</div>${d.notes ? `<p class="hint" style="margin:0">${esc(d.notes)}</p>` : ''}</div>
+        <div class="who"><h2>${esc(d.name)}</h2><div class="sub">${esc(d.platform)} ${esc(d.os_version)}${d.arch ? ' · ' + esc(d.arch) : ''}${d.model ? ' · ' + esc(d.model) : ''}</div>${d.notes ? `<p class="hint" style="margin:0">${esc(d.notes)}</p>` : ''}</div>
         <div class="dactions"><button class="btn ghost" data-act="edit-device">${ic('edit')} Edit</button></div>
       </div>
       <div class="dgrid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">
@@ -943,12 +966,13 @@ function versionModal(existing) {
     fields: [
       { name: 'version', label: 'Version', ph: '10.4.10', required: true },
       { name: 'released', label: 'Release date', type: 'date' },
+      { name: 'arch', label: 'Architecture', type: 'select', options: [...new Set([...(ARCHS[a.platform] || ARCHS.Other), existing?.arch || ''])], full: true },
       { name: 'min_os', label: `Minimum ${a.platform}`, ph: a.platform === 'macOS' ? '10.14.6' : '' },
       { name: 'max_os', label: `Last ${a.platform} it runs on`, ph: a.platform === 'macOS' ? '12' : '' },
-      { name: 'arch', label: 'Architecture', type: 'select', options: ['', 'Universal', 'Apple Silicon', 'Intel', 'x86', 'x64', 'ARM'] },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true, ph: 'Known issues, why you keep this one, library compatibility…' },
     ],
     values: existing || {},
+    body: '<p class="hint" id="archNote" style="margin:10px 0 0" hidden></p>',
     submit: existing ? 'Save' : 'Add & upload files',
     onSubmit: async (d) => {
       const v = existing ? await api('PUT', 'api/versions/' + existing.id, d) : await api('POST', `api/apps/${a.id}/versions`, d);
@@ -956,6 +980,22 @@ function versionModal(existing) {
       if (!existing) uploadModal(v.id);
     },
   });
+  // Choosing an architecture fills in the OS limits Apple has announced for it. Typed values are never overwritten.
+  const f = $('#modal form'), note = $('#archNote');
+  note.style.cssText = 'margin:-4px 0 0;grid-column:1 / -1';
+  f.elements.arch.closest('.f').after(note);
+  let auto = { min_os: '', max_os: '' };
+  const applyArch = (fill) => {
+    const rule = a.platform === 'macOS' ? MAC_ARCH_RULES[f.elements.arch.value] : null;
+    note.hidden = !rule; note.textContent = rule ? rule.note : '';
+    if (!fill) return;
+    for (const k of ['min_os', 'max_os']) {
+      const el = f.elements[k];
+      if (el.value === '' || el.value === auto[k]) { el.value = rule?.[k] || ''; auto[k] = el.value; }
+    }
+  };
+  f.elements.arch.addEventListener('change', () => applyArch(true));
+  applyArch(!existing);
 }
 function uploadModal(versionId) {
   const v = S.app.versions.find(x => x.id === versionId) || { version: '' };
@@ -1012,6 +1052,14 @@ function keyModal(existing) {
     },
   });
 }
+// Mac model identifiers tell Intel from Apple Silicon (e.g. MacPro6,1 is Intel, Mac14,2 is Apple Silicon).
+function guessDeviceArch(model) {
+  const m = String(model || '').match(/^(MacBookAir|MacBookPro|Macmini|iMac|MacPro|Mac|PowerMac|PowerBook|iBook)(\d+),/);
+  if (!m) return '';
+  if (/^(PowerMac|PowerBook|iBook)$/.test(m[1])) return 'PowerPC';
+  const n = +m[2], silicon = { MacBookAir: 10, MacBookPro: 17, Macmini: 9, iMac: 21, Mac: 13, MacPro: 99 };
+  return n >= silicon[m[1]] ? 'Apple Silicon' : 'Intel';
+}
 function deviceModal(existing) {
   modal({
     title: existing ? 'Edit device' : 'Add a device',
@@ -1020,17 +1068,30 @@ function deviceModal(existing) {
       { name: 'name', label: 'Name', ph: 'Mac Pro (Late 2013)', full: true, required: true },
       { name: 'platform', label: 'Platform', type: 'select', options: PLATFORMS },
       { name: 'os_version', label: 'OS version', ph: '12.7.6' },
-      { name: 'model', label: 'Model identifier', ph: 'MacPro6,1', full: true },
+      { name: 'arch', label: 'Processor', type: 'select', options: DEVICE_ARCHS.macOS },
+      { name: 'model', label: 'Model identifier', ph: 'MacPro6,1' },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true },
     ],
     values: existing || {},
     danger: existing ? 'Delete device' : null,
     onDanger: () => confirmBox(`Delete ${existing.name}?`, 'Only the device is removed. Your archived software stays.', 'Delete device', async () => { await api('DELETE', 'api/devices/' + existing.id); refreshChrome(); go('devices'); }),
     onSubmit: async (d) => {
+      if (!d.arch) d.arch = guessDeviceArch(d.model) || '';
       const r = existing ? await api('PUT', 'api/devices/' + existing.id, d) : await api('POST', 'api/devices', d);
       closeModal(); refreshChrome(); existing ? render() : go('device', { id: r.id });
     },
   });
+  const f = $('#modal form');
+  const setArchOptions = () => {
+    const cur = f.elements.arch.value;
+    const opts = DEVICE_ARCHS[f.elements.platform.value] || DEVICE_ARCHS.Other;
+    f.elements.arch.innerHTML = opts.map(o => `<option value="${o}">${o || '—'}</option>`).join('');
+    f.elements.arch.value = opts.includes(cur) ? cur : '';
+  };
+  f.elements.platform.addEventListener('change', setArchOptions);
+  f.elements.model.addEventListener('input', () => { const g = guessDeviceArch(f.elements.model.value); if (g) f.elements.arch.value = g; });
+  setArchOptions();
+  if (existing?.arch) f.elements.arch.value = existing.arch;
 }
 
 /* ============ actions ============ */

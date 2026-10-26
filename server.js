@@ -97,12 +97,15 @@ CREATE TABLE IF NOT EXISTS licenses (
 );
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, model TEXT DEFAULT '', platform TEXT DEFAULT 'macOS',
-  os_version TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL
+  os_version TEXT DEFAULT '', arch TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_versions_app ON versions(app_id);
 CREATE INDEX IF NOT EXISTS idx_files_version ON files(version_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 `);
+
+// migrations for databases created by earlier versions
+if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = 'arch'").get()) db.exec("ALTER TABLE devices ADD COLUMN arch TEXT DEFAULT ''");
 
 const q = (sql) => db.prepare(sql);
 const now = () => new Date().toISOString();
@@ -133,8 +136,27 @@ function cmpVer(a, b) {
   }
   return 0;
 }
+// Architecture rules for Mac software (Apple: support.apple.com/102527).
+// Apple Silicon: needs macOS 11+. Intel 64-bit: native up to macOS 26 (last Intel release), via Rosetta 2 on Apple Silicon
+// up to macOS 27. Intel 32-bit: up to macOS 10.14 Mojave. PowerPC: up to 10.6 Snow Leopard (Rosetta 1).
+const MAC_ARCH_RULES = {
+  'Apple Silicon': { min_os: '11.0' },
+  'Intel 64-bit': { max_os: '27' },
+  'Intel': { max_os: '27' },
+  'Intel 32-bit': { max_os: '10.14.6' },
+  'PowerPC': { max_os: '10.6.8' },
+};
+function archFits(vArch, dArch) {
+  if (!vArch || !dArch) return true;
+  if (vArch === 'Apple Silicon') return dArch === 'Apple Silicon';
+  if (/^Intel/.test(vArch)) return dArch !== 'PowerPC';
+  if (vArch === 'x64') return dArch !== 'x86';
+  if (vArch === 'ARM') return dArch === 'ARM';
+  return true;
+}
 function compat(version, app, device) {
   if (app.platform !== device.platform) return 'no';
+  if (!archFits(version.arch, device.arch)) return 'no';
   if (!device.os_version || (!version.min_os && !version.max_os)) return 'unknown';
   if (version.min_os) { const c = cmpVer(device.os_version, version.min_os); if (c === null) return 'unknown'; if (c < 0) return 'no'; }
   if (version.max_os) {
@@ -325,6 +347,8 @@ app.post('/api/apps/:id/versions', (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
   const b = pick(req.body || {}, VER_FIELDS);
   if (!String(b.version || '').trim()) return res.status(400).json({ error: 'Version number is required' });
+  const rule = a.platform === 'macOS' ? MAC_ARCH_RULES[b.arch] : null;
+  if (rule) { if (!b.min_os && rule.min_os) b.min_os = rule.min_os; if (!b.max_os && rule.max_os) b.max_os = rule.max_os; }
   const id = uid();
   q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,created_at)
      VALUES (:id,:app,:version,:released,:min_os,:max_os,:arch,:notes,:t)`).run({
@@ -450,21 +474,21 @@ app.get('/api/licenses/:id/reveal', (req, res) => {
 app.delete('/api/licenses/:id', (req, res) => { q('DELETE FROM licenses WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
 
 // devices + compatibility
-const DEV_FIELDS = ['name', 'model', 'platform', 'os_version', 'notes'];
+const DEV_FIELDS = ['name', 'model', 'platform', 'os_version', 'arch', 'notes'];
 app.get('/api/devices', (req, res) => res.json(q('SELECT * FROM devices ORDER BY name COLLATE NOCASE').all()));
 app.post('/api/devices', (req, res) => {
   const b = pick(req.body || {}, DEV_FIELDS);
   if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Name is required' });
   const id = uid();
-  q('INSERT INTO devices (id,name,model,platform,os_version,notes,created_at) VALUES (:id,:name,:model,:platform,:os_version,:notes,:t)').run({
-    id, name: b.name.trim(), model: b.model || '', platform: b.platform || 'macOS', os_version: b.os_version || '', notes: b.notes || '', t: now(),
+  q('INSERT INTO devices (id,name,model,platform,os_version,arch,notes,created_at) VALUES (:id,:name,:model,:platform,:os_version,:arch,:notes,:t)').run({
+    id, name: b.name.trim(), model: b.model || '', platform: b.platform || 'macOS', os_version: b.os_version || '', arch: b.arch || '', notes: b.notes || '', t: now(),
   });
   res.status(201).json(q('SELECT * FROM devices WHERE id = ?').get(id));
 });
 app.put('/api/devices/:id', (req, res) => {
   const d = need(q('SELECT * FROM devices WHERE id = ?').get(req.params.id), 'Device');
   const b = { ...d, ...pick(req.body || {}, DEV_FIELDS) };
-  q('UPDATE devices SET name=:name, model=:model, platform=:platform, os_version=:os_version, notes=:notes WHERE id=:id').run({ ...pick(b, DEV_FIELDS), id: d.id });
+  q('UPDATE devices SET name=:name, model=:model, platform=:platform, os_version=:os_version, arch=:arch, notes=:notes WHERE id=:id').run({ ...pick(b, DEV_FIELDS), id: d.id });
   res.json(q('SELECT * FROM devices WHERE id = ?').get(d.id));
 });
 app.delete('/api/devices/:id', (req, res) => { q('DELETE FROM devices WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
