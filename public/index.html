@@ -221,6 +221,11 @@ aside > .panel + .panel { margin-top: 20px; }
 .cmd { display: flex; gap: 6px; align-items: flex-start; background: var(--tile); border-radius: 10px; padding: 8px 6px 8px 10px; margin-top: 6px; }
 .cmd code { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; flex: 1; min-width: 0; }
 .cmd .ibtn { width: 28px; height: 28px; flex: none; }
+.incl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.incl .hint { margin-right: 2px; }
+.parent-link { border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 5px 12px; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.parent-link b { font-weight: 600; }
+.addons { padding-block: 8px; }
 .klist { display: grid; gap: 10px; }
 .krow { display: grid; grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center; background: var(--card); box-shadow: var(--shadow); border-radius: var(--r-md); padding: 12px 14px; }
 .krow .ic { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; cursor: pointer; }
@@ -398,6 +403,8 @@ const ARCHS = {
   'Classic Mac OS': ['', '68k', 'PowerPC', '68k + PowerPC'],
   Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'],
 };
+// What the old names mean today: 2006's "Universal" was PowerPC + Intel, which counts as Intel 32-bit now.
+const ARCH_LABELS = { '': '—', 'Universal': 'Universal (Intel + Apple Silicon)', 'Intel 32-bit': 'Intel 32-bit (also 2006–2010 PowerPC/Intel Universal)', 'Apple Silicon': 'Apple Silicon only' };
 const DEVICE_ARCHS = { macOS: ['', 'Apple Silicon', 'Intel', 'PowerPC'], 'Classic Mac OS': ['', '68k', 'PowerPC'], Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'] };
 // Apple: support.apple.com/102527 — macOS 26 is the last release for Intel Macs; Rosetta 2 runs Intel apps on Apple Silicon through macOS 27.
 const MAC_ARCH_RULES = {
@@ -405,7 +412,7 @@ const MAC_ARCH_RULES = {
   'Apple Silicon': { min_os: '11.0', note: 'Needs a Mac with Apple Silicon (macOS 11 Big Sur or later). No end date is known yet.' },
   'Intel 64-bit': { max_os: '27', note: 'Runs natively on Intel Macs up to macOS 26, and through Rosetta 2 on Apple Silicon up to macOS 27. From macOS 28 Rosetta remains only for certain older games.' },
   'Intel': { max_os: '27', note: 'Runs natively on Intel Macs up to macOS 26, and through Rosetta 2 on Apple Silicon up to macOS 27.' },
-  'Intel 32-bit': { max_os: '10.14.6', note: '32-bit apps stopped working in macOS 10.15 Catalina, so 10.14 Mojave is the last.' },
+  'Intel 32-bit': { max_os: '10.14.6', note: '32-bit apps stopped working in macOS 10.15 Catalina, so 10.14 Mojave is the last. Apps sold as "Universal" between 2006 and 2010 (PowerPC + Intel) belong here.' },
   'PowerPC': { max_os: '10.6.8', note: 'Runs on PowerPC Macs, and on Intel Macs through Rosetta 1 up to 10.6 Snow Leopard.' },
 };
 /* ============ macOS bootable installers ============ */
@@ -537,6 +544,20 @@ const Demo = (() => {
   addApp({ name: 'Xcode', developer: 'Apple', category: 'Development', platform: 'macOS', age: 25, description: 'Kept for building on the Monterey machine.' }, [
     { version: '14.2', released: '2022-12-13', min_os: '12.5', arch: 'Universal', files: [['Xcode_14.2.xip', 7.4 * GB]] },
   ]);
+  const ksp = addApp({ name: 'Kerbal Space Program', developer: 'Squad', category: 'Games', platform: 'macOS', age: 0.3, description: 'DRM-free copies from the Private Division store.' }, [
+    { version: '1.12.5', arch: 'Universal', files: [['ksp-osx-1.12.5.zip', 2.9 * GB]] },
+    { version: '1.12.3', arch: 'Intel 64-bit', files: [['ksp-osx-1.12.3.zip', 2.8 * GB]] },
+  ], [{ label: 'Store order', key: 'PD-KSP-7731-QX92-4410', source: 'Private Division store', purchased: '2019-03-12' }]);
+  addApp({ name: 'Making History', developer: 'Squad', category: 'Games', platform: 'macOS', parent_id: ksp.id, age: 0.3, description: 'Expansion with historical parts and mission builder.' }, [
+    { version: '1.12.1', files: [['KSP-MakingHistory-1.12.1.zip', 410 * MB]] },
+  ], [{ label: 'DLC key', key: 'MH-2201-9KQD-3XWE', source: 'Private Division store', purchased: '2019-03-12' }]);
+  addApp({ name: 'Breaking Ground', developer: 'Squad', category: 'Games', platform: 'macOS', parent_id: ksp.id, age: 0.3, description: 'Robotics parts, surface features and deployable science.' }, [
+    { version: '1.7.1', files: [['KSP-BreakingGround-1.7.1.zip', 260 * MB]] },
+  ]);
+  addApp({ name: 'Final Cut Studio', developer: 'Apple', category: 'Video', platform: 'macOS', age: 0.4, description: 'Retail box, 2006. One serial for the whole suite.' }, [
+    { version: '1', released: '2006-03-01', arch: 'Intel 32-bit', min_os: '10.4.4', max_os: '10.14.6', includes: 'Final Cut Pro 5.1, Motion 2.1, Soundtrack Pro 1.1, DVD Studio Pro 4.1, LiveType 2.1, Compressor 2.1',
+      files: [['Final Cut Studio 5.1.iso', 1.37 * GB, 'disk-image'], ['Motion 2.1.iso', 6.69 * GB, 'disk-image'], ['Motion 2.1.mds', 8 * 1024, 'disk-image'], ['DVD Studio Pro 4.1.iso', 6.89 * GB, 'disk-image'], ['DVD Studio Pro 4.1.mds', 8 * 1024, 'disk-image'], ['Soundtrack Pro 1.1.iso', 461 * MB, 'disk-image'], ['Apple Loops for Soundtrack Pro.iso', 5.98 * GB, 'disk-image'], ['Apple Loops for Soundtrack Pro.mds', 8 * 1024, 'disk-image'], ['LiveType Media 1.iso', 6.6 * GB, 'disk-image'], ['LiveType Media 1.mds', 8 * 1024, 'disk-image'], ['LiveType Media 2.iso', 2.03 * GB, 'disk-image']] },
+  ], [{ label: 'Serial (from the box)', key: 'FCS-0123-4567-8901-2345-6789', source: 'Retail box', purchased: '2006-04-20' }]);
   addApp({ name: 'macOS Mojave', developer: 'Apple', category: 'Operating Systems', platform: 'macOS', age: 0.5, description: 'Last macOS that runs 32-bit apps.' }, [
     { version: '10.14.6', arch: 'Intel 64-bit', files: [['Install macOS Mojave.app.zip', 6.0 * GB]] },
   ]);
@@ -559,8 +580,12 @@ const Demo = (() => {
   function hydrate(a, full) {
     const vs = versions.filter(v => v.app_id === a.id).sort((x, y) => (cmpVer(y.version, x.version) ?? 0));
     const fs = files.filter(f => f.app_id === a.id);
-    const o = { ...a, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length };
-    if (full) { o.versions = vs.map(v => ({ ...v, files: fs.filter(f => f.version_id === v.id) })); o.licenses = licenses.filter(l => l.app_id === a.id).map(({ key, ...l }) => l); }
+    const o = { parent_id: '', ...a, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
+    if (full) {
+      o.versions = vs.map(v => ({ includes: '', ...v, files: fs.filter(f => f.version_id === v.id) })); o.licenses = licenses.filter(l => l.app_id === a.id).map(({ key, ...l }) => l);
+      o.addons = apps.filter(x => x.parent_id === a.id).sort((x, y) => x.name.localeCompare(y.name)).map(x => hydrate(x));
+      const p = a.parent_id && appById(a.parent_id); o.parent = p ? { id: p.id, name: p.name, icon: p.icon, category: p.category } : null;
+    }
     return o;
   }
   const licOut = (l) => { const a = appById(l.app_id); const { key, ...r } = l; return { ...r, app_name: a.name, app_icon: a.icon, app_category: a.category }; };
@@ -583,15 +608,16 @@ const Demo = (() => {
       const term = (qp.get('q') || '').toLowerCase();
       if (qp.get('category')) r = r.filter(a => a.category === qp.get('category'));
       if (qp.get('platform')) r = r.filter(a => a.platform === qp.get('platform'));
-      if (term) r = r.filter(a => [a.name, a.developer, a.description, a.category].some(x => x.toLowerCase().includes(term)));
+      if (!term) r = r.filter(a => !a.parent_id);
+      if (term) r = r.filter(a => versions.some(v => v.app_id === a.id && (v.includes || '').toLowerCase().includes(term)) || [a.name, a.developer, a.description, a.category].some(x => x.toLowerCase().includes(term)));
       return r.map(a => hydrate(a));
     }
-    if (M('POST', /^apps$/)) { if (!body.name?.trim()) err('Name is required'); const a = { id: id(), developer: '', category: 'Utilities', platform: 'macOS', description: '', website: '', icon: '', banner: '', featured: 0, ...pickF(body, ['name', 'developer', 'category', 'platform', 'description', 'website']), created_at: t(0), updated_at: t(0) }; a.folder = a.name; apps.push(a); return hydrate(a, true); }
+    if (M('POST', /^apps$/)) { if (!body.name?.trim()) err('Name is required'); const a = { id: id(), developer: '', category: 'Utilities', platform: 'macOS', description: '', website: '', icon: '', banner: '', featured: 0, ...pickF(body, ['name', 'developer', 'category', 'platform', 'description', 'website', 'parent_id']), created_at: t(0), updated_at: t(0) }; a.folder = a.name; apps.push(a); return hydrate(a, true); }
     if (M('GET', /^apps\/[^/]+$/)) return hydrate(appById(seg[1]) || err('App not found'), true);
-    if (M('PUT', /^apps\/[^/]+$/)) { const a = appById(seg[1]); if (body.featured) apps.forEach(x => x.featured = 0); Object.assign(a, pickF(body, ['name', 'developer', 'category', 'platform', 'description', 'website', 'featured']), { updated_at: t(0) }); return hydrate(a, true); }
-    if (M('DELETE', /^apps\/[^/]+$/)) { const i = seg[1]; [apps, versions, files, licenses].forEach(arr => { for (let k = arr.length - 1; k >= 0; k--) if (arr[k].id === i || arr[k].app_id === i) arr.splice(k, 1); }); return { ok: true }; }
-    if (M('POST', /^apps\/[^/]+\/versions$/)) { if (!body.version?.trim()) err('Version number is required'); const v = { id: id(), app_id: seg[1], released: '', min_os: '', max_os: '', arch: '', notes: '', ...pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes']), created_at: t(0) }; versions.push(v); appById(seg[1]).updated_at = t(0); return v; }
-    if (M('PUT', /^versions\/[^/]+$/)) { const v = versions.find(x => x.id === seg[1]); Object.assign(v, pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes'])); return v; }
+    if (M('PUT', /^apps\/[^/]+$/)) { const a = appById(seg[1]); if (body.featured) apps.forEach(x => x.featured = 0); Object.assign(a, pickF(body, ['name', 'developer', 'category', 'platform', 'description', 'website', 'featured', 'parent_id']), { updated_at: t(0) }); return hydrate(a, true); }
+    if (M('DELETE', /^apps\/[^/]+$/)) { const i = seg[1]; apps.forEach(x => { if (x.parent_id === i) x.parent_id = ''; }); [apps, versions, files, licenses].forEach(arr => { for (let k = arr.length - 1; k >= 0; k--) if (arr[k].id === i || arr[k].app_id === i) arr.splice(k, 1); }); return { ok: true }; }
+    if (M('POST', /^apps\/[^/]+\/versions$/)) { if (!body.version?.trim()) err('Version number is required'); const v = { id: id(), app_id: seg[1], released: '', min_os: '', max_os: '', arch: '', notes: '', ...pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes']), created_at: t(0) }; versions.push(v); appById(seg[1]).updated_at = t(0); return v; }
+    if (M('PUT', /^versions\/[^/]+$/)) { const v = versions.find(x => x.id === seg[1]); Object.assign(v, pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes'])); return v; }
     if (M('DELETE', /^versions\/[^/]+$/)) { const i = seg[1]; for (let k = files.length - 1; k >= 0; k--) if (files[k].version_id === i) files.splice(k, 1); versions.splice(versions.findIndex(v => v.id === i), 1); return { ok: true }; }
     if (M('DELETE', /^files\/[^/]+$/)) { files.splice(files.findIndex(f => f.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^licenses$/)) return licenses.map(licOut).sort((a, b) => a.app_name.localeCompare(b.app_name));
@@ -708,7 +734,7 @@ function appCard(a) {
   return `<article class="card" data-act="open-app" data-id="${a.id}" tabindex="0">
     <div class="art">${iconHTML(a, 'card')}</div>
     <h4>${esc(a.name)}</h4>
-    <div class="meta"><span>${esc(a.category)}</span>${a.latest ? `<span class="pill num">v${esc(a.latest)}</span>` : `<span class="pill grey">No files yet</span>`}</div>
+    <div class="meta"><span>${a.parent_id ? 'Add-on' : esc(a.category)}${a.addon_count ? ` · +${a.addon_count} add-on${a.addon_count === 1 ? '' : 's'}` : ''}</span>${a.latest ? `<span class="pill num">v${esc(a.latest)}</span>` : `<span class="pill grey">No files yet</span>`}</div>
   </article>`;
 }
 function heroArt(a) {
@@ -790,6 +816,7 @@ const Views = {
         <div class="who">
           <h2>${esc(a.name)}</h2>
           <div class="sub">${esc(a.developer || 'Unknown developer')}</div>
+          ${a.parent ? `<button class="parent-link" data-act="open-app" data-id="${a.parent.id}">${ic('package', 'i" style="width:14px;height:14px')} Add-on for <b>${esc(a.parent.name)}</b></button>` : ''}
           <div class="chips"><span class="pill">${esc(a.category)}</span><span class="pill grey">${esc(a.platform)}</span><span class="pill grey num">${a.version_count} version${a.version_count === 1 ? '' : 's'}</span><span class="pill grey num">${fmtSize(a.total_size)}</span></div>
         </div>
         <div class="dactions">
@@ -803,6 +830,10 @@ const Views = {
           <div class="sec-h"><h3>Versions</h3></div>
           ${a.versions.length ? a.versions.map(v => versionCard(v, a, devs)).join('') :
             `<div class="empty"><h3>No versions yet</h3><p>Add a version number, then upload its installer, disk image or zipped .app.</p><button class="btn" data-act="new-version">${ic('plus')} Add first version</button></div>`}
+          ${a.parent ? '' : `<div class="sec">
+            <div class="sec-h"><h3>Add-ons</h3><button class="link" data-act="new-addon">Add add-on</button></div>
+            ${a.addons.length ? `<div class="panel addons">${a.addons.map(addonRow).join('')}</div>` : `<p class="hint" style="margin:0">DLC, plug-ins, expansion packs or sound libraries for ${esc(a.name)} get their own entry here, with their own versions, files and keys.</p>`}
+          </div>`}
         </section>
         <aside>
           ${bootablePanel(a)}
@@ -926,6 +957,7 @@ function versionCard(v, a, devs) {
         <button class="ibtn" data-act="del-version" data-id="${v.id}" aria-label="Delete version" title="Delete version">${ic('trash')}</button>
       </span>
     </div>
+    ${v.includes ? `<div class="incl"><span class="hint">Includes</span>${splitIncludes(v.includes).map(x => `<span class="pill grey">${esc(x)}</span>`).join('')}</div>` : ''}
     ${v.notes ? `<p class="notes">${esc(v.notes)}</p>` : ''}
     ${v.files.length ? `<div class="files">${v.files.map(f => {
       const [kl, ki] = KINDS[f.kind] || KINDS.other;
@@ -935,6 +967,12 @@ function versionCard(v, a, devs) {
         <div class="acts"><button class="btn soft sm" data-act="download" data-id="${f.id}">${ic('download')}<span>Get</span></button><button class="ibtn" data-act="del-file" data-id="${f.id}" aria-label="Delete file">${ic('trash')}</button></div></div>`;
     }).join('')}</div>` : `<div class="empty-files" data-act="upload" data-id="${v.id}" style="cursor:pointer">${ic('upload')} Upload the installer, disk image or zipped .app for ${esc(v.version)}</div>`}
   </article>`;
+}
+const splitIncludes = (t) => String(t || '').split(/\s*[,;·\n]\s*/).map(x => x.trim()).filter(Boolean);
+function addonRow(x) {
+  return `<div class="lrow" data-act="open-app" data-id="${x.id}" tabindex="0"><div class="ic">${iconHTML(x)}</div>
+    <div class="tx"><b>${esc(x.name)}</b><span class="num">${x.version_count ? `${x.version_count} version${x.version_count === 1 ? '' : 's'} · ${fmtSize(x.total_size)}` : 'No files yet'}${x.license_count ? ` · ${x.license_count} key${x.license_count === 1 ? '' : 's'}` : ''}</span></div>
+    ${x.latest ? `<span class="pill num">v${esc(x.latest)}</span>` : ''}</div>`;
 }
 function keyCard(l) {
   return `<div class="key">
@@ -952,7 +990,7 @@ function field(f, val) {
   const v = val ?? f.value ?? '';
   const id = 'f_' + f.name;
   let input;
-  if (f.type === 'select') input = `<select id="${id}" name="${f.name}">${f.options.map(o => `<option ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  if (f.type === 'select') input = `<select id="${id}" name="${f.name}">${f.options.map(o => { const [ov, ol] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`; }).join('')}</select>`;
   else if (f.type === 'textarea') input = `<textarea id="${id}" name="${f.name}" placeholder="${esc(f.ph || '')}">${esc(v)}</textarea>`;
   else if (f.type === 'checkbox') return `<label class="f full" style="display:flex;gap:10px;align-items:center;font-size:14px;color:var(--ink)"><input type="checkbox" id="${id}" name="${f.name}" ${v ? 'checked' : ''} style="width:auto"> ${esc(f.label)}</label>`;
   else input = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${f.type === 'file' ? '' : esc(v)}" placeholder="${esc(f.ph || '')}" ${f.accept ? `accept="${f.accept}"` : ''} ${f.mono ? 'class="mono-in"' : ''} ${f.required ? 'required' : ''} autocomplete="off">`;
@@ -998,16 +1036,21 @@ const APP_FIELDS = [
   { name: 'description', label: 'Notes', type: 'textarea', full: true, ph: 'Where it came from, what it needs, anything future-you should know.' },
   { name: 'icon', label: 'Icon (PNG with transparency works best, any shape)', type: 'file', accept: 'image/*', full: true },
 ];
-function appModal(existing) {
+async function appModal(existing, preset = {}) {
+  // main apps that something can be an add-on of (not add-ons themselves, not this app)
+  let mains = [];
+  try { mains = (await api('GET', 'api/apps')).filter(x => !x.parent_id && x.id !== existing?.id); } catch {}
+  const isAddon = !!(existing?.parent_id || preset.parent_id);
+  const canBeAddon = !existing?.addon_count;
   modal({
-    title: existing ? 'Edit app' : 'Add software',
-    lead: existing ? '' : 'Start with the app, then add each version you own and upload its files.',
-    body: existing ? '' : `<div class="tip">${ic('info')}<span>Paste the result of <b>App Info</b> (⌘V) to fill this in. <button type="button" class="link" data-act="get-appinfo" style="font-size:inherit">Download App Info</button></span></div>`,
-    fields: APP_FIELDS,
-    values: existing || {},
-    submit: existing ? 'Save' : 'Add app',
+    title: existing ? (isAddon ? 'Edit add-on' : 'Edit app') : preset.parent_id ? `Add-on for ${preset.parentName}` : 'Add software',
+    lead: existing ? '' : preset.parent_id ? 'DLC, plug-ins, expansion packs, sound libraries: anything bought or installed on top of the main app. It gets its own versions, files and keys.' : 'Start with the app, then add each version you own and upload its files.',
+    body: existing || preset.parent_id ? '' : `<div class="tip">${ic('info')}<span>Paste the result of <b>App Info</b> (⌘V) to fill this in. <button type="button" class="link" data-act="get-appinfo" style="font-size:inherit">Download App Info</button></span></div>`,
+    fields: [...APP_FIELDS.map(f => f.name === 'name' && isAddon ? { ...f, ph: 'Making History' } : f), ...(canBeAddon && mains.length ? [{ name: 'parent_id', label: 'Add-on for', type: 'select', full: true, options: [['', '— Nothing, this is a main app'], ...mains.map(m => [m.id, m.name])] }] : [])],
+    values: existing || preset,
+    submit: existing ? 'Save' : preset.parent_id ? 'Add add-on' : 'Add app',
     danger: existing ? 'Delete app' : null,
-    onDanger: () => confirmBox(`Delete ${existing.name}?`, `This removes all ${existing.version_count} versions, ${existing.file_count} files (${fmtSize(existing.total_size)}) and ${existing.license_count} keys from the NAS. It cannot be undone.`, 'Delete everything', async () => { await api('DELETE', 'api/apps/' + existing.id); toast('App deleted'); refreshChrome(); go('library'); }),
+    onDanger: () => confirmBox(`Delete ${existing.name}?`, `This removes all ${existing.version_count} versions, ${existing.file_count} files (${fmtSize(existing.total_size)}) and ${existing.license_count} keys from the NAS. It cannot be undone.${existing.addon_count ? ` Its ${existing.addon_count} add-on${existing.addon_count === 1 ? '' : 's'} stay and become separate entries.` : ''}`, 'Delete everything', async () => { await api('DELETE', 'api/apps/' + existing.id); toast('App deleted'); refreshChrome(); go('library'); }),
     onSubmit: async (d) => {
       const { icon, ...body } = d;
       const a = existing ? await api('PUT', 'api/apps/' + existing.id, body) : await api('POST', 'api/apps', body);
@@ -1026,9 +1069,10 @@ function versionModal(existing) {
     fields: [
       { name: 'version', label: 'Version', ph: '10.4.10', required: true },
       { name: 'released', label: 'Release date', type: 'date' },
-      { name: 'arch', label: 'Architecture', type: 'select', options: [...new Set([...(ARCHS[a.platform] || ARCHS.Other), existing?.arch || ''])], full: true },
+      { name: 'arch', label: 'Architecture', type: 'select', options: [...new Set([...(ARCHS[a.platform] || ARCHS.Other), existing?.arch || ''])].map(x => [x, ARCH_LABELS[x] || x]), full: true },
       { name: 'min_os', label: `Minimum ${a.platform}`, ph: a.platform === 'macOS' ? '10.14.6' : '' },
       { name: 'max_os', label: `Last ${a.platform} it runs on`, ph: a.platform === 'macOS' ? '12' : '' },
+      { name: 'includes', label: 'Includes (for suites and bundles, separate with commas)', full: true, ph: 'Final Cut Pro 5.1, Motion 2.1, Soundtrack Pro 1.1' },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true, ph: 'Known issues, why you keep this one, library compatibility…' },
     ],
     values: existing || takePendingVersion(),
@@ -1241,7 +1285,7 @@ function fillForm(form, values) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 }
-document.addEventListener('paste', (e) => {
+document.addEventListener('paste', async (e) => {
   const info = parseAppInfo(e.clipboardData?.getData('text'));
   if (!info) return;
   const form = $('#modal form');
@@ -1249,7 +1293,7 @@ document.addEventListener('paste', (e) => {
     if (e.target.closest?.('input,textarea')) return;
     e.preventDefault();
     S.pendingVersion = versionFromInfo(info);
-    appModal();
+    await appModal();
     fillForm($('#modal form'), { name: info.name, developer: info.developer, platform: 'macOS' });
     toast(`Filled in from App Info. Add ${info.name}, then the version follows.`);
     return;
@@ -1272,12 +1316,13 @@ document.addEventListener('click', async (e) => {
   try {
     switch (act) {
       case 'go': S.filter.category = ''; go(el.dataset.v); break;
-      case 'back': history.length > 1 && !S.demo ? history.back() : go(S.route.v === 'device' ? 'devices' : 'library'); break;
+      case 'back': history.length > 1 && !S.demo ? history.back() : S.app?.parent && S.route.v === 'app' ? go('app', { id: S.app.parent.id }) : go(S.route.v === 'device' ? 'devices' : 'library'); break;
       case 'cat': S.filter.category = el.dataset.c; go('library'); break;
       case 'open-app': go('app', { id }); break;
       case 'open-device': go('device', { id }); break;
       case 'new-app': appModal(); break;
       case 'edit-app': appModal(S.app); break;
+      case 'new-addon': appModal(null, { parent_id: S.app.id, parentName: S.app.name, category: S.app.category, platform: S.app.platform, developer: S.app.developer }); break;
       case 'new-version': versionModal(); break;
       case 'edit-version': versionModal(S.app.versions.find(v => v.id === id)); break;
       case 'del-version': { const v = S.app.versions.find(x => x.id === id); confirmBox(`Delete version ${v.version}?`, `${v.files.length} file(s), ${fmtSize(v.files.reduce((s, f) => s + f.size, 0))}, will be removed from the NAS.`, 'Delete version', async () => { await api('DELETE', 'api/versions/' + id); toast('Version deleted'); refreshChrome(); render(); }); break; }

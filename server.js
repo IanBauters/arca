@@ -105,6 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 `);
 
 // migrations for databases created by earlier versions
+if (!db.prepare("SELECT 1 FROM pragma_table_info('apps') WHERE name = 'parent_id'").get()) db.exec("ALTER TABLE apps ADD COLUMN parent_id TEXT DEFAULT ''");
+if (!db.prepare("SELECT 1 FROM pragma_table_info('versions') WHERE name = 'includes'").get()) db.exec("ALTER TABLE versions ADD COLUMN includes TEXT DEFAULT ''");
 for (const col of ['arch', 'serial']) if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = ?").get(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT DEFAULT ''`);
 
 const q = (sql) => db.prepare(sql);
@@ -117,7 +119,8 @@ function safeName(s, fallback = 'item') {
   return out || fallback;
 }
 function uniqueFolder(name) {
-  let base = safeName(name, 'app'), f = base, i = 2;
+  // nested paths (add-ons) are allowed; each part is made safe on its own
+  let base = String(name).split(/[\\/]+/).filter(x => x && x !== '.' && x !== '..').map(x => safeName(x, 'app')).join('/') || 'app', f = base, i = 2;
   while (q('SELECT 1 FROM apps WHERE folder = ?').get(f) || fs.existsSync(path.join(LIBRARY_DIR, f))) f = `${base} (${i++})`;
   return f;
 }
@@ -129,7 +132,7 @@ function inside(root, p) {
 const absOf = (f) => inside(LIBRARY_DIR, f.rel_path);
 function kindFor(name) {
   const n = name.toLowerCase();
-  if (/\.(iso|dmg|cdr|toast|img|dsk|image|sparseimage|sparsebundle|bin|cue|nrg|vmdk|vdi|ipsw)$/.test(n)) return 'disk-image';
+  if (/\.(iso|dmg|cdr|toast|img|dsk|image|sparseimage|sparsebundle|bin|cue|nrg|mds|mdf|ccd|sub|toc|smi|vmdk|vdi|ipsw)$/.test(n)) return 'disk-image';
   if (/\.(app|pkg|mpkg|exe|msi|zip|xip|sit|sitx|hqx|tar|gz|tgz|7z|rar)$/.test(n)) return 'installer';
   if (/\.(pdf|rtf|rtfd|txt|md|html?|doc|docx)$/.test(n)) return 'manual';
   if (/\.(jpe?g|png|gif|tiff?|heic|webp|psd)$/.test(n)) return 'artwork';
@@ -195,10 +198,14 @@ function hydrateApp(app, { full = false } = {}) {
     file_count: files.length,
     total_size: files.reduce((s, f) => s + f.size, 0),
     license_count: q('SELECT COUNT(*) n FROM licenses WHERE app_id = ?').get(app.id).n,
+    addon_count: q("SELECT COUNT(*) n FROM apps WHERE parent_id = ?").get(app.id).n,
   };
   if (full) {
     out.versions = versions.map(v => ({ ...v, files: files.filter(f => f.version_id === v.id).sort((x, y) => x.original_name.localeCompare(y.original_name, undefined, { numeric: true })) }));
     out.licenses = q('SELECT id, app_id, label, key_mask, registered_to, email, purchased, source, notes, created_at FROM licenses WHERE app_id = ? ORDER BY created_at').all(app.id);
+    out.addons = q('SELECT * FROM apps WHERE parent_id = ? ORDER BY name COLLATE NOCASE').all(app.id).map(x => hydrateApp(x));
+    const parent = app.parent_id ? q('SELECT id, name, icon, category FROM apps WHERE id = ?').get(app.parent_id) : null;
+    out.parent = parent || null;
   }
   return out;
 }
@@ -210,12 +217,14 @@ function writeSidecar(appId) {
   const full = hydrateApp(app, { full: true });
   const dir = path.join(LIBRARY_DIR, app.folder);
   if (!fs.existsSync(dir)) return;
+  const parent = app.parent_id ? q('SELECT name FROM apps WHERE id = ?').get(app.parent_id) : null;
   const doc = {
+    ...(parent ? { addon_for: parent.name } : {}),
     _note: 'Written by Arca. Metadata only; license keys are stored encrypted in the Arca database.',
     name: app.name, developer: app.developer, category: app.category, platform: app.platform,
     description: app.description, website: app.website,
     versions: full.versions.map(v => ({
-      version: v.version, released: v.released, min_os: v.min_os, max_os: v.max_os, arch: v.arch, notes: v.notes,
+      version: v.version, released: v.released, min_os: v.min_os, max_os: v.max_os, arch: v.arch, notes: v.notes, includes: v.includes,
       files: v.files.map(f => ({ name: f.original_name, path: f.rel_path, kind: f.kind, size: f.size, sha256: f.sha256 })),
     })),
   };
@@ -265,7 +274,7 @@ const need = (row, what = 'Item') => { if (!row) throw Object.assign(new Error(`
 
 // stats
 app.get('/api/stats', wrap(async (req, res) => {
-  const n = (t) => q(`SELECT COUNT(*) n FROM ${t}`).get().n;
+  const n = (t) => q(`SELECT COUNT(*) n FROM ${t}${t === 'apps' ? " WHERE parent_id = ''" : ''}`).get().n;
   const size = q('SELECT COALESCE(SUM(size),0) s FROM files').get().s;
   const bad = q("SELECT COUNT(*) n FROM files WHERE verify_status IN ('mismatch','missing')").get().n;
   const verified = q("SELECT COUNT(*) n FROM files WHERE verify_status = 'ok'").get().n;
@@ -273,30 +282,45 @@ app.get('/api/stats', wrap(async (req, res) => {
   let disk = null;
   try { const s = await fsp.statfs(LIBRARY_DIR); disk = { total: s.blocks * s.bsize, free: s.bavail * s.bsize }; } catch {}
   const recent = q(`SELECT v.id, v.version, v.created_at, a.id app_id, a.name, a.icon, a.category FROM versions v JOIN apps a ON a.id = v.app_id ORDER BY v.created_at DESC LIMIT 6`).all();
-  const cats = q('SELECT category, COUNT(*) n FROM apps GROUP BY category').all();
+  const cats = q("SELECT category, COUNT(*) n FROM apps WHERE parent_id = '' GROUP BY category").all();
   res.json({ apps: n('apps'), versions: n('versions'), files: n('files'), licenses: n('licenses'), devices: n('devices'), size, bad, verified, last_verify: lastVerify, disk, recent, categories: cats, verify: verifyJob });
 }));
 
 // apps
-const APP_FIELDS = ['name', 'developer', 'category', 'platform', 'description', 'website', 'featured'];
+const APP_FIELDS = ['name', 'developer', 'category', 'platform', 'description', 'website', 'featured', 'parent_id'];
+// An add-on (DLC, plug-in, sound library) hangs under one main entry; add-ons themselves can't have add-ons.
+function validParent(parentId, selfId) {
+  if (!parentId) return '';
+  const p = q('SELECT id, parent_id FROM apps WHERE id = ?').get(parentId);
+  if (!p) throw Object.assign(new Error('That main app no longer exists'), { status: 400 });
+  if (p.id === selfId) throw Object.assign(new Error('An app cannot be an add-on of itself'), { status: 400 });
+  if (p.parent_id) throw Object.assign(new Error('Choose a main app, not another add-on'), { status: 400 });
+  if (selfId && q('SELECT 1 FROM apps WHERE parent_id = ?').get(selfId)) throw Object.assign(new Error('This app has add-ons of its own, so it cannot become an add-on'), { status: 400 });
+  return p.id;
+}
 app.get('/api/apps', (req, res) => {
   let rows = q('SELECT * FROM apps ORDER BY name COLLATE NOCASE').all();
-  const { q: term, category, platform } = req.query;
+  const { q: term, category, platform, addons } = req.query;
+  if (!term && !addons) rows = rows.filter(a => !a.parent_id);
   if (category) rows = rows.filter(a => a.category === category);
   if (platform) rows = rows.filter(a => a.platform === platform);
   if (term) {
     const t = String(term).toLowerCase();
-    rows = rows.filter(a => [a.name, a.developer, a.description, a.category].some(x => String(x).toLowerCase().includes(t)));
+    const inc = new Set(q('SELECT app_id, includes FROM versions').all().filter(v => v.includes.toLowerCase().includes(t)).map(v => v.app_id));
+    rows = rows.filter(a => inc.has(a.id) || [a.name, a.developer, a.description, a.category].some(x => String(x).toLowerCase().includes(t)));
   }
   res.json(rows.map(a => hydrateApp(a)));
 });
 app.post('/api/apps', (req, res) => {
   const b = pick(req.body || {}, APP_FIELDS);
   if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Name is required' });
-  const id = uid(), t = now(), folder = uniqueFolder(b.name);
+  const parent_id = validParent(b.parent_id);
+  const parent = parent_id ? q('SELECT folder FROM apps WHERE id = ?').get(parent_id) : null;
+  // add-ons live inside the main app's folder: "Kerbal Space Program/Add-ons/Making History"
+  const id = uid(), t = now(), folder = uniqueFolder(parent ? path.join(parent.folder, 'Add-ons', safeName(b.name, 'add-on')) : b.name);
   fs.mkdirSync(path.join(LIBRARY_DIR, folder), { recursive: true });
-  q(`INSERT INTO apps (id,name,developer,category,platform,description,website,featured,folder,created_at,updated_at)
-     VALUES (:id,:name,:developer,:category,:platform,:description,:website,:featured,:folder,:t,:t)`).run({
+  q(`INSERT INTO apps (id,name,developer,category,platform,description,website,featured,folder,parent_id,created_at,updated_at)
+     VALUES (:id,:name,:developer,:category,:platform,:description,:website,:featured,:folder,:parent_id,:t,:t)`).run({ parent_id,
     id, name: b.name.trim(), developer: b.developer || '', category: b.category || 'Utilities', platform: b.platform || 'macOS',
     description: b.description || '', website: b.website || '', featured: b.featured ? 1 : 0, folder, t,
   });
@@ -307,9 +331,10 @@ app.get('/api/apps/:id', (req, res) => res.json(hydrateApp(need(q('SELECT * FROM
 app.put('/api/apps/:id', (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
   const b = { ...a, ...pick(req.body || {}, APP_FIELDS) };
+  b.parent_id = validParent(b.parent_id, a.id);
   if (b.featured) q('UPDATE apps SET featured = 0').run();
   q(`UPDATE apps SET name=:name, developer=:developer, category=:category, platform=:platform, description=:description,
-     website=:website, featured=:featured, updated_at=:t WHERE id=:id`).run({ ...pick(b, APP_FIELDS), featured: b.featured ? 1 : 0, id: a.id, t: now() });
+     website=:website, featured=:featured, parent_id=:parent_id, updated_at=:t WHERE id=:id`).run({ ...pick(b, APP_FIELDS), featured: b.featured ? 1 : 0, id: a.id, t: now() });
   writeSidecar(a.id);
   res.json(hydrateApp(q('SELECT * FROM apps WHERE id = ?').get(a.id), { full: true }));
 });
@@ -319,6 +344,7 @@ app.delete('/api/apps/:id', wrap(async (req, res) => {
   await fsp.rm(path.join(LIBRARY_DIR, a.folder, '_arca.json'), { force: true });
   await removeEmptyDirs(path.join(LIBRARY_DIR, a.folder));
   for (const m of [a.icon, a.banner]) if (m) await fsp.rm(path.join(MEDIA_DIR, m), { force: true });
+  q("UPDATE apps SET parent_id = '' WHERE parent_id = ?").run(a.id);
   q('DELETE FROM apps WHERE id = ?').run(a.id);
   res.json({ ok: true });
 }));
@@ -357,7 +383,7 @@ app.post('/api/apps/:id/:slot(icon|banner)', (req, res, next) => {
 app.use('/media', express.static(MEDIA_DIR, { maxAge: '7d', fallthrough: false }));
 
 // versions
-const VER_FIELDS = ['version', 'released', 'min_os', 'max_os', 'arch', 'notes'];
+const VER_FIELDS = ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes'];
 app.post('/api/apps/:id/versions', (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
   const b = pick(req.body || {}, VER_FIELDS);
@@ -365,9 +391,9 @@ app.post('/api/apps/:id/versions', (req, res) => {
   const rule = a.platform === 'macOS' ? MAC_ARCH_RULES[b.arch] : null;
   if (rule) { if (!b.min_os && rule.min_os) b.min_os = rule.min_os; if (!b.max_os && rule.max_os) b.max_os = rule.max_os; }
   const id = uid();
-  q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,created_at)
-     VALUES (:id,:app,:version,:released,:min_os,:max_os,:arch,:notes,:t)`).run({
-    id, app: a.id, version: b.version.trim(), released: b.released || '', min_os: b.min_os || '', max_os: b.max_os || '', arch: b.arch || '', notes: b.notes || '', t: now(),
+  q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,includes,created_at)
+     VALUES (:id,:app,:version,:released,:min_os,:max_os,:arch,:notes,:includes,:t)`).run({
+    id, app: a.id, version: b.version.trim(), released: b.released || '', min_os: b.min_os || '', max_os: b.max_os || '', arch: b.arch || '', notes: b.notes || '', includes: b.includes || '', t: now(),
   });
   q('UPDATE apps SET updated_at = ? WHERE id = ?').run(now(), a.id);
   writeSidecar(a.id);
@@ -376,7 +402,7 @@ app.post('/api/apps/:id/versions', (req, res) => {
 app.put('/api/versions/:id', (req, res) => {
   const v = need(q('SELECT * FROM versions WHERE id = ?').get(req.params.id), 'Version');
   const b = { ...v, ...pick(req.body || {}, VER_FIELDS) };
-  q('UPDATE versions SET version=:version, released=:released, min_os=:min_os, max_os=:max_os, arch=:arch, notes=:notes WHERE id=:id').run({ ...pick(b, VER_FIELDS), id: v.id });
+  q('UPDATE versions SET version=:version, released=:released, min_os=:min_os, max_os=:max_os, arch=:arch, notes=:notes, includes=:includes WHERE id=:id').run({ ...pick(b, VER_FIELDS), id: v.id });
   writeSidecar(v.app_id);
   res.json(q('SELECT * FROM versions WHERE id = ?').get(v.id));
 });

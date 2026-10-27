@@ -7,6 +7,7 @@ A self-hosted software vault with an App Store–style interface. Arca keeps the
 - **Encrypted license keys.** Serials and product keys are stored with AES-256-GCM and only shown when you reveal them.
 - **Device compatibility.** Add the machines you still use (say, a Mac Pro 2013 on macOS 12.7.6) and Arca tells you which archived version of each app runs on them.
 - **Bit-rot check.** Every file is fingerprinted with SHA-256 on upload. *Settings → Verify all checksums* re-reads the library and flags anything changed or missing.
+- **Add-ons and suites.** DLC, plug-ins and sound libraries become add-ons of a main app, each with its own versions, files and keys (stored in `App/Add-ons/Name/`). Suites like Final Cut Studio stay one entry and list their apps under *Includes*, which search also finds.
 - **Folder uploads.** Drop a whole folder, such as a set of install discs, and its subfolders are kept. Apps (.app) are zipped first with Finder › Compress.
 - **Operating systems.** Mac OS X, macOS and Classic Mac OS get their own category, and macOS installers from El Capitan on show Apple's steps for making a bootable USB installer.
 - **No upload limit.** Files stream straight to disk, so a 60 GB sound library uploads as easily as a 30 MB utility.
