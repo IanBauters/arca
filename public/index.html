@@ -98,6 +98,7 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .hero p { margin: 0; font-size: 13.5px; opacity: .85; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .btn { border: 0; border-radius: 99px; padding: 11px 22px; background: var(--accent); color: #fff; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .btn:hover { filter: brightness(1.06); }
+a.btn, a.ibtn { text-decoration: none; }
 .btn.ghost { background: var(--tile); color: var(--ink); }
 .btn.soft { background: var(--accent-soft); color: var(--accent); }
 .btn.danger { background: var(--bad-soft); color: var(--bad); }
@@ -136,6 +137,8 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .panel { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 20px; }
 .panel + .panel { margin-top: 20px; }
 .dgrid > .panel + .panel { margin-top: 0; }
+aside > .panel:first-child { margin-top: 0; }
+aside > .panel + .panel { margin-top: 20px; }
 .panel-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .panel-h h3 { margin: 0; font-size: 18px; font-weight: 600; }
 .lrow { display: flex; align-items: center; gap: 12px; padding: 9px 0; cursor: pointer; }
@@ -214,6 +217,31 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 
 /* keys list */
+.boot ol { margin: 0; padding-left: 18px; display: grid; gap: 10px; font-size: 13.5px; }
+.boot li::marker { color: var(--muted); }
+.cmd { display: flex; gap: 6px; align-items: flex-start; background: var(--tile); border-radius: 10px; padding: 8px 6px 8px 10px; margin-top: 6px; }
+.cmd code { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.cmd .ibtn { width: 28px; height: 28px; flex: none; }
+.imp-list { display: grid; gap: 4px; max-height: min(52vh, 460px); overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+.imp-row { display: grid; grid-template-columns: 22px 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; }
+.imp-row:hover { background: var(--tile); }
+.imp-row.done { opacity: .55; }
+.imp-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+.imp-row .nm { min-width: 0; }
+.imp-row .nm b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-row .nm button { border: 0; background: none; padding: 0; color: inherit; font: inherit; font-weight: 500; text-align: left; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.imp-row .nm button:hover { color: var(--accent); }
+.imp-row .nm span { color: var(--muted); font-size: 12px; }
+.imp-row svg { color: var(--muted); }
+.crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; margin-bottom: 10px; color: var(--muted); }
+.crumbs button { border: 0; background: none; padding: 2px 4px; border-radius: 6px; color: var(--accent); font: inherit; cursor: pointer; }
+.rev { display: grid; gap: 10px; max-height: min(56vh, 520px); overflow-y: auto; margin: 0 -6px; padding: 2px 6px; }
+.rev-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 8px; background: var(--tile); border-radius: 12px; padding: 10px; }
+.rev-row .src { grid-column: 1 / -1; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; min-width: 0; }
+.rev-row .src span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rev-row input, .rev-row select { border: 1px solid transparent; background: var(--surface); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; min-width: 0; width: 100%; outline: none; }
+.rev-row input:focus, .rev-row select:focus { border-color: var(--accent); }
+@media (max-width: 560px) { .rev-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .rev-row .nmin { grid-column: 1 / -1; } }
 .klist { display: grid; gap: 10px; }
 .krow { display: grid; grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center; background: var(--card); box-shadow: var(--shadow); border-radius: var(--r-md); padding: 12px 14px; }
 .krow .ic { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; cursor: pointer; }
@@ -350,6 +378,10 @@ const P = {
   cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
   dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  os: '<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M9 10.5l2 2 4-4"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  finder: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 3c-1.5 3-2 6-1.5 10H13M8 9v1.5M16 9v1.5M7.5 15.5c2.6 2 6.4 2 9 0"/>',
+  import: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/>',
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/>',
 };
 const ic = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -358,8 +390,9 @@ const CATEGORIES = [
   { id: 'Video', icon: 'video', hue: 215 }, { id: 'Audio', icon: 'audio', hue: 330 }, { id: 'Graphics', icon: 'palette', hue: 28 },
   { id: 'Development', icon: 'code', hue: 255 }, { id: 'Productivity', icon: 'briefcase', hue: 160 }, { id: 'Utilities', icon: 'wrench', hue: 200 },
   { id: 'Games', icon: 'game', hue: 285 }, { id: 'Education', icon: 'cap', hue: 45 }, { id: 'System', icon: 'cpu', hue: 0 },
+  { id: 'Operating Systems', icon: 'os', hue: 220 },
 ];
-const PLATFORMS = ['macOS', 'Windows', 'Linux', 'iOS', 'Other'];
+const PLATFORMS = ['macOS', 'Classic Mac OS', 'Windows', 'Linux', 'iOS', 'Other'];
 const KINDS = { installer: ['Installer', 'package'], 'disk-image': ['Disk image', 'disc'], update: ['Update', 'refresh'], manual: ['Manual', 'doc'], artwork: ['Box art', 'image'], other: ['Other', 'file'] };
 const catOf = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[5];
 
@@ -386,9 +419,10 @@ function cmpVer(a, b) {
 }
 const ARCHS = {
   macOS: ['', 'Universal', 'Apple Silicon', 'Intel 64-bit', 'Intel 32-bit', 'PowerPC'],
+  'Classic Mac OS': ['', '68k', 'PowerPC', '68k + PowerPC'],
   Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'],
 };
-const DEVICE_ARCHS = { macOS: ['', 'Apple Silicon', 'Intel', 'PowerPC'], Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'] };
+const DEVICE_ARCHS = { macOS: ['', 'Apple Silicon', 'Intel', 'PowerPC'], 'Classic Mac OS': ['', '68k', 'PowerPC'], Windows: ['', 'x64', 'x86', 'ARM'], Linux: ['', 'x64', 'x86', 'ARM'], iOS: ['', 'ARM'], Other: ['', 'x64', 'x86', 'ARM', 'Other'] };
 // Apple: support.apple.com/102527 — macOS 26 is the last release for Intel Macs; Rosetta 2 runs Intel apps on Apple Silicon through macOS 27.
 const MAC_ARCH_RULES = {
   'Universal': { note: 'Runs natively on Intel and Apple Silicon. No end date is known yet.' },
@@ -398,6 +432,76 @@ const MAC_ARCH_RULES = {
   'Intel 32-bit': { max_os: '10.14.6', note: '32-bit apps stopped working in macOS 10.15 Catalina, so 10.14 Mojave is the last.' },
   'PowerPC': { max_os: '10.6.8', note: 'Runs on PowerPC Macs, and on Intel Macs through Rosetta 1 up to 10.6 Snow Leopard.' },
 };
+/* ============ macOS releases ============ */
+// Marketing names by version, used to name imported OS folders.
+const MAC_RELEASES = {
+  '10.0': 'Cheetah', '10.1': 'Puma', '10.2': 'Jaguar', '10.3': 'Panther', '10.4': 'Tiger', '10.5': 'Leopard', '10.6': 'Snow Leopard',
+  '10.7': 'Lion', '10.8': 'Mountain Lion', '10.9': 'Mavericks', '10.10': 'Yosemite', '10.11': 'El Capitan', '10.12': 'Sierra',
+  '10.13': 'High Sierra', '10.14': 'Mojave', '10.15': 'Catalina', '11': 'Big Sur', '12': 'Monterey', '13': 'Ventura', '14': 'Sonoma',
+  '15': 'Sequoia', '26': 'Tahoe', '27': 'Golden Gate',
+};
+function macReleaseKey(version) {
+  const p = String(version).split('.');
+  return p[0] === '10' ? p.slice(0, 2).join('.') : p[0];
+}
+function macProductName(version) {
+  const key = macReleaseKey(version), name = MAC_RELEASES[key];
+  if (!name) return '';
+  const minor = key.startsWith('10.') ? +key.split('.')[1] : 99;
+  const prefix = minor <= 7 ? 'Mac OS X' : minor <= 11 ? 'OS X' : 'macOS';
+  return `${prefix} ${name}`;
+}
+// Apple: "Create a bootable installer for macOS" — support.apple.com/101578. Installer names exactly as Apple lists them.
+const BOOTABLE = {
+  '27': 'Install macOS 27 Golden Gate', '26': 'Install macOS Tahoe', '15': 'Install macOS Sequoia', '14': 'Install macOS Sonoma',
+  '13': 'Install macOS Ventura', '12': 'Install macOS Monterey', '11': 'Install macOS Big Sur', '10.15': 'Install macOS Catalina',
+  '10.14': 'Install macOS Mojave', '10.13': 'Install macOS High Sierra', '10.11': 'Install OS X El Capitan',
+};
+function bootableCommand(key) {
+  const inst = BOOTABLE[key]; if (!inst) return '';
+  const app = '/Applications/' + inst.replace(/ /g, '\\ ') + '.app';
+  return `sudo ${app}/Contents/Resources/createinstallmedia --volume /Volumes/MyVolume` + (key === '10.11' ? ` --applicationpath ${app}` : '');
+}
+function bootablePanel(a) {
+  if (a.category !== 'Operating Systems' || a.platform !== 'macOS' || !a.versions.length) return '';
+  const key = macReleaseKey(a.versions[0].version), inst = BOOTABLE[key];
+  if (!inst) return `<div class="panel"><div class="panel-h"><h3>Bootable installer</h3></div>
+    <p class="hint" style="margin:0">Apple's createinstallmedia instructions cover OS X El Capitan and later. For this release, see Apple's <a href="https://support.apple.com/en-us/102662" target="_blank" rel="noopener" style="color:var(--accent)">other ways to install macOS</a>.</p></div>`;
+  const cmd = bootableCommand(key);
+  return `<div class="panel boot">
+    <div class="panel-h"><h3>Bootable installer</h3></div>
+    <ol>
+      <li>Put <b>${esc(inst)}</b> in your Applications folder. If it opens after downloading, quit it.</li>
+      <li>Connect a USB drive of 16 GB or more (32 GB fits any version) and name it <b class="mono">MyVolume</b>. It will be erased.</li>
+      <li>In Terminal, run this command, enter your password and type <b>Y</b>:
+        <div class="cmd"><code>${esc(cmd)}</code><button class="ibtn" data-act="copy" data-label="Command copied" data-text="${esc(cmd)}" aria-label="Copy command">${ic('copy')}</button></div></li>
+      <li><b>Apple Silicon:</b> shut down, connect the drive, hold the power button until startup options appear, choose the installer.<br><b>Intel:</b> shut down, connect the drive, start up holding Option (⌥) and choose the installer.</li>
+    </ol>
+    <p class="hint" style="margin:10px 0 0">The Mac needs an internet connection while installing. Source: <a href="https://support.apple.com/en-us/101578" target="_blank" rel="noopener" style="color:var(--accent)">Apple Support 101578</a></p>
+  </div>`;
+}
+// Turns a folder or file name like "Mac OS X v10.6 Snow Leopard Server" into a name, version and category.
+function guessFromName(raw, isFile) {
+  const base = isFile ? raw.replace(/\.(dmg|iso|cdr|toast|img|dsk|zip|sit|sitx|pkg|app|sparseimage|bin)$/i, '') : raw;
+  const m = base.match(/(?:\bv|version\s*)?(\d+(?:\.\d+){0,3})/i);
+  const version = m ? m[1] : '';
+  const isClassic = /^\s*(system\s*[1-7]|mac\s*os\s*[89]\b)/i.test(base);
+  const isMac = !isClassic && /(mac\s*os\s*x|\bos\s*x\b|\bmacos\b)/i.test(base);
+  if (isClassic) {
+    const major = (version.split('.')[0] || '');
+    const label = /^\s*system/i.test(base) ? `System ${major}` : `Mac OS ${major}`;
+    return { name: label, version, category: 'Operating Systems', platform: 'Classic Mac OS', developer: 'Apple', notes: '' };
+  }
+  if (isMac && version) {
+    let name = macProductName(version) || base.replace(m[0], '').replace(/\s{2,}/g, ' ').trim();
+    if (/\bserver\b/i.test(base)) name += ' Server';
+    const rest = base.split(/\s+-\s+/).slice(1).join(' – ');
+    return { name, version, category: 'Operating Systems', platform: 'macOS', developer: 'Apple', notes: rest };
+  }
+  const name = (m ? base.replace(m[0], '') : base).replace(/[\s\-–_]+$/, '').replace(/\s{2,}/g, ' ').trim() || base;
+  return { name, version: version || '1.0', category: 'Utilities', platform: 'macOS', notes: '' };
+}
+
 function archFits(vArch, dArch) {
   if (!vArch || !dArch) return true;
   if (vArch === 'Apple Silicon') return dArch === 'Apple Silicon';
@@ -493,6 +597,33 @@ const Demo = (() => {
   addApp({ name: 'Xcode', developer: 'Apple', category: 'Development', platform: 'macOS', age: 25, description: 'Kept for building on the Monterey machine.' }, [
     { version: '14.2', released: '2022-12-13', min_os: '12.5', arch: 'Universal', files: [['Xcode_14.2.xip', 7.4 * GB]] },
   ]);
+  // Operating systems linked from the NAS (example)
+  const linkApp = (a, vers) => { const app = addApp(a, vers.map(v => ({ ...v, files: [] }))); vers.forEach(v => { const ver = versions.find(x => x.app_id === app.id && x.version === v.version); v.files.forEach(([name, size, rel]) => { files.push({ id: id(), version_id: ver.id, app_id: app.id, kind: /\.app$/.test(name) ? 'installer' : 'disk-image', original_name: name, rel_path: rel, size, sha256: fakeHash(name), uploaded_at: ver.created_at, verified_at: t(2), verify_status: 'ok', root: 'import' }); imported.add(rel); }); }); };
+  const imported = new Set();
+  linkApp({ name: 'macOS Mojave', developer: 'Apple', category: 'Operating Systems', platform: 'macOS', age: 0.5, description: 'Last macOS that runs 32-bit apps.' },
+    [{ version: '10.14', arch: 'Intel 64-bit', files: [['Install macOS Mojave.app', 6.1 * GB, 'macOS v10.14 Mojave/Install macOS Mojave.app']] }]);
+  linkApp({ name: 'Mac OS X Snow Leopard', developer: 'Apple', category: 'Operating Systems', platform: 'macOS', age: 0.6 },
+    [{ version: '10.6', files: [['Mac OS X Install DVD.dmg', 6.9 * GB, 'Mac OS X v10.6 Snow Leopard/Mac OS X Install DVD.dmg']] },
+     { version: '10.6.3', notes: 'Mac mini – Mac OS X Install DVD', files: [['Mac OS X 10.6.3 - Mac mini - Mac OS X Install DVD.dmg', 7.2 * GB, 'Mac OS X 10.6.3 - Mac mini - Mac OS X Install DVD.dmg']] }]);
+  const NAS = [
+    ['iLife 11', 'folder', 4.3 * GB, 2], ['Mac OS X v10.0 Cheetah', 'folder', 1.1 * GB, 3], ['Mac OS X v10.1 Puma', 'folder', 0.9 * GB, 2],
+    ['Mac OS X v10.2 Jaguar', 'folder', 1.6 * GB, 3], ['Mac OS X v10.3 Panther', 'folder', 1.9 * GB, 3], ['Mac OS X v10.4 Tiger', 'folder', 3.6 * GB, 2],
+    ['Mac OS X v10.5 Leopard', 'folder', 7.4 * GB, 1], ['Mac OS X v10.6 Snow Leopard', 'folder', 6.9 * GB, 1], ['Mac OS X v10.6 Snow Leopard Server', 'folder', 7.0 * GB, 1],
+    ['Mac OS X v10.7 Lion', 'folder', 4.1 * GB, 1], ['Mac OS X v10.8 Mountain Lion', 'folder', 4.4 * GB, 1], ['macOS v10.14 Mojave', 'folder', 6.1 * GB, 1],
+    ['OS X v10.9 Mavericks', 'folder', 5.3 * GB, 1], ['OS X v10.10 Yosemite', 'folder', 5.6 * GB, 1], ['System 7.5', 'folder', 0.05 * GB, 4],
+    ['Mac OS X 10.6.3 - Mac mini - Mac OS X Install DVD.dmg', 'file', 7.2 * GB, 1],
+  ];
+  const NAS_SINGLE = { 'Mac OS X v10.5 Leopard': 'Mac OS X Install DVD.dmg', 'Mac OS X v10.6 Snow Leopard': 'Mac OS X Install DVD.dmg', 'Mac OS X v10.6 Snow Leopard Server': 'Mac OS X Server Install Disc.dmg',
+    'Mac OS X v10.7 Lion': 'Install Mac OS X Lion.app', 'Mac OS X v10.8 Mountain Lion': 'Install OS X Mountain Lion.app', 'macOS v10.14 Mojave': 'Install macOS Mojave.app',
+    'OS X v10.9 Mavericks': 'Install OS X Mavericks.app', 'OS X v10.10 Yosemite': 'Install OS X Yosemite.app' };
+  const nasFiles = (n) => {
+    if (n.endsWith('.dmg')) return [[n, n]];
+    if (NAS_SINGLE[n]) return [[NAS_SINGLE[n], `${n}/${NAS_SINGLE[n]}`]];
+    const cnt = NAS.find(x => x[0] === n)[3];
+    const names = n === 'System 7.5' ? ['Install 1.img', 'Install 2.img', 'Disk Tools.img', 'System 7.5.3 Update.smi'] : n === 'iLife 11' ? ['iLife 11.dmg', 'iLife 11 Update.dmg'] : Array.from({ length: cnt }, (_, i) => `Disc ${i + 1}.iso`);
+    return names.map(f => [f, `${n}/${f}`]);
+  };
+
   devices.push({ id: id(), name: 'Mac Pro (Late 2013)', model: 'MacPro6,1', serial: 'F5KN81ZXF693', platform: 'macOS', os_version: '12.7.6', arch: 'Intel', notes: 'Edit suite. D500 GPUs.', created_at: t(40) });
   devices.push({ id: id(), name: 'MacBook Air M2', model: 'Mac14,2', serial: 'H4WQ9X2LJK', platform: 'macOS', os_version: '27.0', arch: 'Apple Silicon', notes: '', created_at: t(40) });
   devices.push({ id: id(), name: 'Retro PC', model: 'Pentium 4', platform: 'Windows', os_version: '5.1', arch: 'x86', notes: 'Windows XP SP3', created_at: t(40) });
@@ -518,7 +649,7 @@ const Demo = (() => {
     if (M('GET', /^stats$/)) {
       const recent = versions.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6).map(v => { const a = appById(v.app_id); return { id: v.id, version: v.version, created_at: v.created_at, app_id: a.id, name: a.name, icon: a.icon, category: a.category }; });
       const cats = {}; apps.forEach(a => cats[a.category] = (cats[a.category] || 0) + 1);
-      return { apps: apps.length, versions: versions.length, files: files.length, licenses: licenses.length, devices: devices.length, size: files.reduce((s, f) => s + f.size, 0), bad: 0, verified: files.filter(f => f.verify_status === 'ok').length, last_verify: job.finished_at, disk: { total: 8 * 1024 * GB, free: 5.3 * 1024 * GB }, recent, categories: Object.entries(cats).map(([category, n]) => ({ category, n })), verify: job };
+      return { fingerprinting: { pending: files.filter(f => !f.sha256).length }, apps: apps.length, versions: versions.length, files: files.length, licenses: licenses.length, devices: devices.length, size: files.reduce((s, f) => s + f.size, 0), bad: 0, verified: files.filter(f => f.verify_status === 'ok').length, last_verify: job.finished_at, disk: { total: 8 * 1024 * GB, free: 5.3 * 1024 * GB }, recent, categories: Object.entries(cats).map(([category, n]) => ({ category, n })), verify: job };
     }
     if (M('GET', /^apps$/)) {
       let r = apps.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -547,14 +678,37 @@ const Demo = (() => {
     if (M('DELETE', /^devices\/[^/]+$/)) { devices.splice(devices.findIndex(d => d.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices\/[^/]+\/compatible$/)) {
       const d = devices.find(x => x.id === seg[1]) || err('Device not found');
-      return { device: d, apps: apps.filter(a => a.platform === d.platform).sort((a, b) => a.name.localeCompare(b.name)).map(a => { const h = hydrate(a, true); const vs = h.versions.map(v => ({ id: v.id, version: v.version, min_os: v.min_os, max_os: v.max_os, file_count: v.files.length, compat: compat(v, a, d) })); const best = vs.find(v => v.compat === 'yes'); return { id: a.id, name: a.name, icon: a.icon, category: a.category, platform: a.platform, best: best?.version || '', status: best ? 'yes' : vs.some(v => v.compat === 'unknown') ? 'unknown' : 'no', versions: vs }; }) };
+      return { device: d, apps: apps.filter(a => a.platform === d.platform && a.category !== 'Operating Systems').sort((a, b) => a.name.localeCompare(b.name)).map(a => { const h = hydrate(a, true); const vs = h.versions.map(v => ({ id: v.id, version: v.version, min_os: v.min_os, max_os: v.max_os, file_count: v.files.length, compat: compat(v, a, d) })); const best = vs.find(v => v.compat === 'yes'); return { id: a.id, name: a.name, icon: a.icon, category: a.category, platform: a.platform, best: best?.version || '', status: best ? 'yes' : vs.some(v => v.compat === 'unknown') ? 'unknown' : 'no', versions: vs }; }) };
+    }
+    if (M('GET', /^import\/browse$/)) {
+      if (qp.get('path')) { const n = qp.get('path'); return { enabled: true, path: n, entries: nasFiles(n).map(([f, rel]) => ({ name: f, path: rel, type: f.endsWith('.app') ? 'bundle' : 'file', size: NAS.find(x => x[0] === n)[2] / nasFiles(n).length, files: 1, imported: imported.has(rel) })) }; }
+      return { enabled: true, path: '', entries: NAS.map(([n, type, size, cnt]) => ({ name: n, path: n, type, size, files: cnt, imported: nasFiles(n).every(([, rel]) => imported.has(rel)) })) };
+    }
+    if (M('POST', /^import$/)) {
+      const sum = { apps: 0, versions: 0, files: 0, skipped: 0 };
+      for (const it of body.items || []) {
+        let app = apps.find(a => a.name.toLowerCase() === it.name.toLowerCase());
+        if (!app) { app = { id: id(), developer: /Mac OS|OS X|macOS|System/.test(it.name) ? 'Apple' : '', description: '', website: '', icon: '', banner: '', featured: 0, name: it.name, category: it.category, platform: it.platform || 'macOS', folder: it.name, created_at: t(0), updated_at: t(0) }; apps.push(app); sum.apps++; }
+        let ver = versions.find(v => v.app_id === app.id && v.version === it.version);
+        if (!ver) { ver = { id: id(), app_id: app.id, version: it.version, released: '', min_os: '', max_os: '', arch: '', notes: it.notes || '', created_at: t(0) }; versions.push(ver); sum.versions++; }
+        const top = NAS.find(x => x[0] === it.path.split('/')[0]);
+        const list = it.path.includes('/') ? [[it.path.split('/').pop(), it.path]] : nasFiles(it.path);
+        for (const [f, rel] of list) {
+          if (imported.has(rel)) { sum.skipped++; continue; }
+          const rec = { id: id(), version_id: ver.id, app_id: app.id, kind: /\.app$/.test(f) ? 'installer' : 'disk-image', original_name: f, rel_path: rel, size: (top ? top[2] : 1e9) / list.length, sha256: '', uploaded_at: t(0), verified_at: '', verify_status: 'pending', root: 'import' };
+          files.push(rec); imported.add(rel); sum.files++;
+          setTimeout(() => { rec.sha256 = fakeHash(rel); rec.verify_status = 'ok'; }, 2500 + Math.random() * 4000);
+        }
+        app.updated_at = t(0);
+      }
+      return sum;
     }
     if (M('GET', /^verify$/)) return job;
     if (M('POST', /^verify$/)) {
       if (!job.running) { job = { running: true, done: 0, total: files.length, bad: [], started_at: t(0), finished_at: '' }; const tick = setInterval(() => { job.done = Math.min(job.total, job.done + 2); if (job.done >= job.total) { job.running = false; job.finished_at = new Date().toISOString(); files.forEach(f => f.verified_at = job.finished_at); clearInterval(tick); } }, 220); }
       return job;
     }
-    if (M('GET', /^settings$/)) return { version: '1.0.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
+    if (M('GET', /^settings$/)) return { import_dir: '/import', import_smb: 'smb://diskstation/Software/Mac OS', version: '1.1.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
     err('Not available in the demo');
   }
   async function upload(url, form, onProgress) {
@@ -621,7 +775,8 @@ async function refreshChrome() {
       <h4>${fmtSize(s.size)}<br>safely archived</h4>
       <p class="num">${s.files} files across ${s.versions} versions${s.disk ? ` · ${fmtSize(s.disk.free)} free on the volume` : ''}</p>
       ${s.disk ? `<div class="bar" title="${pct}% of volume used"><i style="width:${pct}%"></i></div>` : ''}
-      <button data-act="new-app">Add software</button>`;
+      ${s.fingerprinting?.pending ? `<p class="num">Fingerprinting ${s.fingerprinting.pending} linked file${s.fingerprinting.pending === 1 ? '' : 's'}…</p>` : ''}`;
+    if (s.fingerprinting?.pending) { clearTimeout(S._fp); S._fp = setTimeout(refreshChrome, 4000); }
   } catch {}
 }
 
@@ -715,7 +870,8 @@ const Views = {
     return `<div class="toolbar">
         <button class="chip ${!S.filter.category ? 'on' : ''}" data-act="cat" data-c="">All</button>
         ${CATEGORIES.map(c => `<button class="chip ${S.filter.category === c.id ? 'on' : ''}" data-act="cat" data-c="${c.id}">${c.id}</button>`).join('')}
-        <select class="sel" id="platformFilter" aria-label="Platform"><option value="">All platforms</option>${PLATFORMS.map(x => `<option ${S.filter.platform === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        <button class="chip" data-act="import" style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">${ic('import', 'i" style="width:15px;height:15px')}Import from NAS</button>
+        <select class="sel" id="platformFilter" style="margin-left:0" aria-label="Platform"><option value="">All platforms</option>${PLATFORMS.map(x => `<option ${S.filter.platform === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
       </div>
       ${apps.length ? `<div class="cards">${apps.map(appCard).join('')}</div>` :
         `<div class="empty"><h3>${S.search ? `Nothing matches “${esc(S.search)}”` : 'No software here yet'}</h3><p>${S.search ? 'Try another name or developer.' : 'Add an app to this category to start archiving it.'}</p><button class="btn" data-act="new-app">${ic('plus')} Add software</button></div>`}`;
@@ -725,7 +881,7 @@ const Views = {
   async app() {
     const [a, devices] = await Promise.all([api('GET', 'api/apps/' + S.route.id), api('GET', 'api/devices')]);
     S.app = a; setTitle(a.name);
-    const latestFile = a.versions[0]?.files.find(f => f.kind === 'installer' || f.kind === 'disk-image') || a.versions[0]?.files[0];
+    const latestFile = a.versions[0]?.files.filter(f => !isBundle(f.original_name)).find(f => f.kind === 'installer' || f.kind === 'disk-image');
     const devs = devices.filter(d => d.platform === a.platform);
     return `<div class="dhead">
         <div class="big">${iconHTML(a, 'lg')}</div>
@@ -747,11 +903,12 @@ const Views = {
             `<div class="empty"><h3>No versions yet</h3><p>Add a version number, then upload its installer, disk image or zipped .app.</p><button class="btn" data-act="new-version">${ic('plus')} Add first version</button></div>`}
         </section>
         <aside>
+          ${bootablePanel(a)}
           <div class="panel">
             <div class="panel-h"><h3>License keys</h3><button class="link" data-act="new-key">Add key</button></div>
             ${a.licenses.length ? a.licenses.map(keyCard).join('') : '<p class="hint">Keep serials, product keys or purchase details here. They are encrypted on the NAS and only shown when you reveal them.</p>'}
           </div>
-          ${devs.length ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
+          ${devs.length && a.category !== 'Operating Systems' ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
           <div class="panel">
             <div class="panel-h"><h3>About</h3></div>
             ${a.description ? `<p class="about">${esc(a.description)}</p>` : '<p class="hint">No description yet.</p>'}
@@ -817,6 +974,10 @@ const Views = {
       <div class="panel"><div class="panel-h"><h3>Integrity check</h3></div>
         <p>Re-reads every archived file and compares it to the SHA-256 recorded at upload. Run it after moving disks or every few months to catch bit rot early.</p>
         <div id="verifyBox">${verifyBox(st.verify || {}, st)}</div></div>
+      <div class="panel"><div class="panel-h"><h3>Import from NAS</h3></div>
+        ${s.import_dir ? `<p>Add software that already lives on your NAS without uploading or copying it. Arca links the files where they are and never changes them. Mounted folder: <span class="mono">${esc(s.import_dir)}</span>${s.import_smb ? `, opened in Finder as <span class="mono">${esc(s.import_smb)}</span>` : ''}.</p>
+        <button class="btn ghost" data-act="import">${ic('import')} Import from NAS</button>`
+        : `<p>Mount an existing NAS folder at <span class="mono">/import</span> in docker-compose.yml (read-only is fine) to add software that is already there without uploading it.</p>`}</div>
       <div class="panel"><div class="panel-h"><h3>App Info for Mac</h3></div>
         <p>A small AppleScript that reads an app's version, minimum macOS and architecture. Copy its result, then paste it anywhere in Arca (⌘V) to add the app with everything filled in. Open the file in Script Editor and choose File › Export › Application to keep it in your Dock.</p>
         <button class="btn ghost" data-act="get-appinfo">${ic('download')} Download App Info</button></div>
@@ -860,7 +1021,7 @@ function versionCard(v, a, devs) {
       ${v.released ? `<span class="hint">${fmtDate(v.released)}</span>` : ''}
       ${range ? `<span class="pill grey">${esc(a.platform)} ${esc(range)}</span>` : ''}
       ${v.arch ? `<span class="pill grey">${esc(v.arch)}</span>` : ''}
-      ${runs.map(d => `<span class="pill good" title="Runs on ${esc(d.name)}">${esc(d.name)}</span>`).join('')}
+      ${a.category === 'Operating Systems' ? '' : runs.map(d => `<span class="pill good" title="Runs on ${esc(d.name)}">${esc(d.name)}</span>`).join('')}
       <span class="tools">
         <button class="ibtn" data-act="upload" data-id="${v.id}" aria-label="Upload files" title="Upload files">${ic('upload')}</button>
         <button class="ibtn" data-act="edit-version" data-id="${v.id}" aria-label="Edit version" title="Edit version">${ic('edit')}</button>
@@ -871,11 +1032,21 @@ function versionCard(v, a, devs) {
     ${v.files.length ? `<div class="files">${v.files.map(f => {
       const [kl, ki] = KINDS[f.kind] || KINDS.other;
       const st = f.verify_status === 'ok' ? '' : f.verify_status === 'missing' ? '<span class="pill bad">Missing</span>' : f.verify_status === 'mismatch' ? '<span class="pill bad">Checksum changed</span>' : '';
+      const linked = f.root === 'import', bundle = isBundle(f.original_name), smb = linked ? smbUrl(f) : '';
+      const hash = f.sha256 ? `<button class="hash" data-act="copy" data-text="${f.sha256}" title="Copy SHA-256">sha256 ${f.sha256.slice(0, 10)}…</button>` : '<span class="pill grey">Fingerprinting…</span>';
+      const get = bundle
+        ? (smb ? `<a class="btn soft sm" href="${esc(smb)}" title="Open the folder on the NAS in Finder">${ic('finder')}<span>Finder</span></a>` : `<button class="btn soft sm" data-act="copy" data-label="Path copied" data-text="${esc(f.rel_path)}" title="Copy the path on the NAS">${ic('copy')}<span>Path</span></button>`)
+        : `<button class="btn soft sm" data-act="download" data-id="${f.id}">${ic('download')}<span>Get</span></button>${smb ? `<a class="ibtn" href="${esc(smb)}" title="Show on the NAS in Finder" aria-label="Show in Finder">${ic('finder')}</a>` : ''}`;
       return `<div class="file"><div class="k">${ic(ki)}</div>
-        <div class="n"><b title="${esc(f.original_name)}">${esc(f.original_name)}</b><span><span>${kl}</span><span class="num">${fmtSize(f.size)}</span><button class="hash" data-act="copy" data-text="${f.sha256}" title="Copy SHA-256">sha256 ${f.sha256.slice(0, 10)}…</button>${st}</span></div>
-        <div class="acts"><button class="btn soft sm" data-act="download" data-id="${f.id}">${ic('download')}<span>Get</span></button><button class="ibtn" data-act="del-file" data-id="${f.id}" aria-label="Delete file">${ic('trash')}</button></div></div>`;
+        <div class="n"><b title="${esc(f.original_name)}">${esc(f.original_name)}</b><span><span>${kl}</span><span class="num">${fmtSize(f.size)}</span>${hash}${linked ? `<span class="pill grey" title="Linked from the NAS: ${esc(f.rel_path)}">${ic('folder', 'i" style="width:12px;height:12px')} On NAS</span>` : ''}${st}</span></div>
+        <div class="acts">${get}<button class="ibtn" data-act="del-file" data-id="${f.id}" aria-label="${linked ? 'Remove from Arca' : 'Delete file'}" title="${linked ? 'Remove from Arca (the file stays on the NAS)' : 'Delete file'}">${ic('trash')}</button></div></div>`;
     }).join('')}</div>` : `<div class="empty-files" data-act="upload" data-id="${v.id}" style="cursor:pointer">${ic('upload')} Upload the installer, disk image or zipped .app for ${esc(v.version)}</div>`}
   </article>`;
+}
+const isBundle = (n) => /\.(app|pkg|mpkg|sparsebundle|bundle|rtfd|prefPane|plugin|framework)$/i.test(n);
+function smbUrl(f) {
+  const base = S.settings?.import_smb;
+  return base ? base + '/' + f.rel_path.split('/').map(encodeURIComponent).join('/') : '';
 }
 function keyCard(l) {
   return `<div class="key">
@@ -1159,6 +1330,82 @@ document.addEventListener('paste', (e) => {
   toast('Filled in from App Info');
 });
 
+/* ============ import from NAS ============ */
+async function importModal() {
+  const sel = new Map(); // path -> entry
+  let cur = '';
+  const el = document.createElement('div');
+  closeModal();
+  el.className = 'scrim'; el.id = 'modal';
+  el.innerHTML = `<form class="modal" style="width:min(720px,100%)" novalidate role="dialog" aria-modal="true" aria-labelledby="mTitle"></form>`;
+  document.body.appendChild(el);
+  el.addEventListener('mousedown', (e) => { if (e.target === el) closeModal(); });
+  const form = el.querySelector('form');
+
+  async function browse(p) {
+    cur = p;
+    let r;
+    try { r = await api('GET', 'api/import/browse?path=' + encodeURIComponent(p)); } catch (e) { r = { enabled: false, error: e.message }; }
+    if (!r.enabled) {
+      form.innerHTML = `<h3 id="mTitle">Import from NAS</h3><p class="lead">No NAS folder is mounted yet. Add a volume at <span class="mono">/import</span> to the Arca container and run the install task again.</p><div class="mfoot"><button type="button" class="btn" data-act="close">OK</button></div>`;
+      return;
+    }
+    const parts = p ? p.split('/') : [];
+    form.innerHTML = `<h3 id="mTitle">Import from NAS</h3>
+      <p class="lead">Tick the folders and disk images to add. Each one becomes a version; folders with the same name become versions of one entry. Nothing is copied or changed on the NAS.</p>
+      <div class="crumbs"><button type="button" data-p="">${ic('folder', 'i" style="width:14px;height:14px')} import</button>${parts.map((x, i) => `› <button type="button" data-p="${esc(parts.slice(0, i + 1).join('/'))}">${esc(x)}</button>`).join('')}</div>
+      <div class="imp-list">${r.entries.map(e => `
+        <label class="imp-row ${e.imported ? 'done' : ''}">
+          <input type="checkbox" data-path="${esc(e.path)}" ${sel.has(e.path) ? 'checked' : ''} ${e.imported ? 'disabled' : ''}>
+          ${ic(e.type === 'folder' ? 'folder' : e.type === 'bundle' ? 'package' : 'disc')}
+          <span class="nm">${e.type === 'folder' ? `<button type="button" data-open="${esc(e.path)}" title="Open folder">${esc(e.name)}</button>` : `<b>${esc(e.name)}</b>`}
+            <span class="num">${e.type === 'folder' ? `${e.files} item${e.files === 1 ? '' : 's'} · ` : ''}${fmtSize(e.size)}</span></span>
+          ${e.imported ? '<span class="pill good">In Arca</span>' : '<span></span>'}
+        </label>`).join('') || '<p class="hint">This folder is empty.</p>'}</div>
+      <div class="mfoot"><span class="hint left num" id="selCount"></span><button type="button" class="btn ghost" data-act="close">Cancel</button><button type="button" class="btn" id="impNext">Review</button></div>`;
+    const entriesByPath = Object.fromEntries(r.entries.map(e => [e.path, e]));
+    const upd = () => { $('#selCount').textContent = sel.size ? `${sel.size} selected` : ''; $('#impNext').disabled = !sel.size; };
+    form.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? sel.set(cb.dataset.path, entriesByPath[cb.dataset.path]) : sel.delete(cb.dataset.path); upd(); }));
+    form.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); browse(b.dataset.open); }));
+    form.querySelectorAll('.crumbs [data-p]').forEach(b => b.addEventListener('click', () => browse(b.dataset.p)));
+    $('#impNext').addEventListener('click', review);
+    upd();
+  }
+
+  function review() {
+    const rows = [...sel.values()].map(e => ({ e, g: guessFromName(e.name, e.type !== 'folder') }));
+    const catOpts = (v) => CATEGORIES.map(c => `<option ${c.id === v ? 'selected' : ''}>${c.id}</option>`).join('');
+    form.innerHTML = `<h3 id="mTitle">Check names and versions</h3>
+      <p class="lead">Arca suggested these from the folder names. Rows with the same name end up as versions of one entry, also when that entry already exists.</p>
+      <div class="rev">${rows.map((r, i) => `
+        <div class="rev-row" data-i="${i}">
+          <div class="src">${ic(r.e.type === 'folder' ? 'folder' : 'disc', 'i" style="width:14px;height:14px;flex:none')}<span title="${esc(r.e.path)}">${esc(r.e.path)}</span><span class="num" style="margin-left:auto;flex:none">${fmtSize(r.e.size)}</span></div>
+          <input class="nmin" aria-label="Name" data-k="name" value="${esc(r.g.name)}">
+          <input aria-label="Version" data-k="version" value="${esc(r.g.version)}" placeholder="Version">
+          <select aria-label="Category" data-k="category">${catOpts(r.g.category)}</select>
+        </div>`).join('')}</div>
+      <p class="hint" id="mErr" style="color:var(--bad);margin:12px 0 0" hidden></p>
+      <div class="mfoot"><button type="button" class="btn ghost left" id="impBack">Back</button><button type="button" class="btn ghost" data-act="close">Cancel</button><button type="button" class="btn" id="impGo">Import ${rows.length}</button></div>`;
+    $('#impBack').addEventListener('click', () => browse(cur));
+    $('#impGo').addEventListener('click', async () => {
+      const items = rows.map((r, i) => {
+        const row = form.querySelector(`.rev-row[data-i="${i}"]`);
+        const v = Object.fromEntries([...row.querySelectorAll('[data-k]')].map(x => [x.dataset.k, x.value.trim()]));
+        return { path: r.e.path, ...v, platform: r.g.platform, developer: r.g.developer || '', notes: r.g.notes };
+      });
+      if (items.some(x => !x.name)) { const m = $('#mErr'); m.textContent = 'Every row needs a name.'; m.hidden = false; return; }
+      $('#impGo').disabled = true; $('#impGo').textContent = 'Importing…';
+      try {
+        const res = await api('POST', 'api/import', { items });
+        closeModal();
+        toast(`Imported ${res.files} file${res.files === 1 ? '' : 's'} into ${res.apps + res.versions ? `${res.versions} version${res.versions === 1 ? '' : 's'}` : 'existing versions'}. Fingerprinting runs in the background.`);
+        refreshChrome(); S.filter.category = ''; go('library');
+      } catch (e) { const m = $('#mErr'); m.textContent = e.message; m.hidden = false; $('#impGo').disabled = false; $('#impGo').textContent = `Import ${rows.length}`; }
+    });
+  }
+  browse('');
+}
+
 /* ============ actions ============ */
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -1176,7 +1423,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-version': versionModal(S.app.versions.find(v => v.id === id)); break;
       case 'del-version': { const v = S.app.versions.find(x => x.id === id); confirmBox(`Delete version ${v.version}?`, `${v.files.length} file(s), ${fmtSize(v.files.reduce((s, f) => s + f.size, 0))}, will be removed from the NAS.`, 'Delete version', async () => { await api('DELETE', 'api/versions/' + id); toast('Version deleted'); refreshChrome(); render(); }); break; }
       case 'upload': uploadModal(id); break;
-      case 'del-file': { const f = S.app.versions.flatMap(v => v.files).find(x => x.id === id); confirmBox(`Delete ${f.original_name}?`, `${fmtSize(f.size)} will be removed from the NAS.`, 'Delete file', async () => { await api('DELETE', 'api/files/' + id); toast('File deleted'); refreshChrome(); render(); }); break; }
+      case 'del-file': { const f = S.app.versions.flatMap(v => v.files).find(x => x.id === id); const lk = f.root === 'import'; confirmBox(lk ? `Remove ${f.original_name} from Arca?` : `Delete ${f.original_name}?`, lk ? 'Arca forgets this file. The original stays in your NAS folder.' : `${fmtSize(f.size)} will be removed from the NAS.`, lk ? 'Remove' : 'Delete file', async () => { await api('DELETE', 'api/files/' + id); toast('File deleted'); refreshChrome(); render(); }); break; }
       case 'download': download(id); break;
       case 'new-key': keyModal(); break;
       case 'edit-key': keyModal(S.app.licenses.find(l => l.id === id)); break;
@@ -1191,6 +1438,7 @@ document.addEventListener('click', async (e) => {
       case 'verify': await api('POST', 'api/verify'); pollVerify(); break;
       case 'theme': store.set('theme', el.dataset.t); applyTheme(); render(); break;
       case 'export': if (S.demo) toast('Export works once Arca runs on your NAS'); else location.href = 'api/export'; break;
+      case 'import': importModal(); break;
       case 'get-appinfo':
         if (S.demo) { toast('The download works once Arca runs on your NAS'); break; }
         { const a = document.createElement('a'); a.href = 'tools/App-Info.applescript'; a.download = 'App Info.applescript'; document.body.appendChild(a); a.click(); a.remove(); }
@@ -1234,6 +1482,7 @@ async function boot() {
     S.auth = h.auth_required;
     if (h.auth_required && !h.authenticated) return renderLogin();
   } catch { S.demo = true; }
+  try { S.settings = await api('GET', 'api/settings'); } catch { S.settings = {}; }
   shell();
   if (!S.demo && location.hash) { const [v, id] = location.hash.slice(1).split('/'); S.route = { v, id }; }
   refreshChrome();
