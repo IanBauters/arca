@@ -20,10 +20,6 @@ const LIBRARY_DIR = path.resolve(process.env.LIBRARY_DIR || './library');
 const MEDIA_DIR = path.join(DATA_DIR, 'media');
 const TMP_DIR = path.join(LIBRARY_DIR, '.arca-tmp');
 const PASSWORD = process.env.ARCA_PASSWORD || '';
-// Optional: an existing NAS folder mounted into the container (read-only is fine). Files there are linked, not copied.
-const IMPORT_DIR = path.resolve(process.env.IMPORT_DIR || '/import');
-const IMPORT_SMB = (process.env.IMPORT_SMB || '').replace(/\/+$/, '');
-const importEnabled = () => { try { return fs.statSync(IMPORT_DIR).isDirectory(); } catch { return false; } };
 
 for (const d of [DATA_DIR, LIBRARY_DIR, MEDIA_DIR, TMP_DIR]) {
   try {
@@ -109,7 +105,6 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 `);
 
 // migrations for databases created by earlier versions
-if (!db.prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'root'").get()) db.exec("ALTER TABLE files ADD COLUMN root TEXT DEFAULT 'library'");
 for (const col of ['arch', 'serial']) if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = ?").get(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT DEFAULT ''`);
 
 const q = (sql) => db.prepare(sql);
@@ -131,13 +126,7 @@ function inside(root, p) {
   if (r !== root && !r.startsWith(root + path.sep)) throw Object.assign(new Error('Bad path'), { status: 400 });
   return r;
 }
-const rootOf = (f) => f.root === 'import' ? IMPORT_DIR : LIBRARY_DIR;
-const absOf = (f) => inside(rootOf(f), f.rel_path);
-const isLinked = (f) => f.root === 'import';
-
-// Folder-shaped items macOS treats as a single file (apps, packages, sparse bundles)
-const BUNDLE_EXT = /\.(app|pkg|mpkg|sparsebundle|bundle|rtfd|prefPane|plugin|framework)$/i;
-const SKIP_NAME = /^(\..*|@eaDir|#recycle|#snapshot|Thumbs\.db|desktop\.ini|Icon\r)$/i;
+const absOf = (f) => inside(LIBRARY_DIR, f.rel_path);
 function kindFor(name) {
   const n = name.toLowerCase();
   if (/\.(iso|dmg|cdr|toast|img|dsk|image|sparseimage|sparsebundle|bin|cue|nrg|vmdk|vdi|ipsw)$/.test(n)) return 'disk-image';
@@ -146,52 +135,9 @@ function kindFor(name) {
   if (/\.(jpe?g|png|gif|tiff?|heic|webp|psd)$/.test(n)) return 'artwork';
   return 'other';
 }
-// Walks a folder; bundles count as one item. Returns [{rel, size, bundle}]
-async function walk(absDir, relBase = '') {
-  const out = [];
-  let entries = [];
-  try { entries = await fsp.readdir(absDir, { withFileTypes: true }); } catch { return out; }
-  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (SKIP_NAME.test(e.name)) continue;
-    const abs = path.join(absDir, e.name), rel = path.join(relBase, e.name);
-    if (e.isDirectory()) {
-      if (BUNDLE_EXT.test(e.name)) out.push({ rel, size: await treeSize(abs), bundle: true });
-      else out.push(...await walk(abs, rel));
-    } else if (e.isFile()) {
-      out.push({ rel, size: (await fsp.stat(abs)).size, bundle: false });
-    }
-  }
-  return out;
-}
-async function treeSize(abs) {
-  let total = 0;
-  let entries = [];
-  try { entries = await fsp.readdir(abs, { withFileTypes: true }); } catch { return 0; }
-  for (const e of entries) {
-    const p = path.join(abs, e.name);
-    if (e.isDirectory()) total += await treeSize(p);
-    else if (e.isFile()) total += (await fsp.stat(p)).size;
-  }
-  return total;
-}
-// SHA-256 of a file, or of a whole bundle (every path, symlink target and file content, in sorted order)
 async function hashPath(abs) {
-  const st = await fsp.lstat(abs);
   const h = crypto.createHash('sha256');
-  if (!st.isDirectory()) { await pipeline(fs.createReadStream(abs), h); return h.digest('hex'); }
-  async function add(dir, rel) {
-    const entries = (await fsp.readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
-    for (const e of entries) {
-      const p = path.join(dir, e.name), r = rel ? rel + '/' + e.name : e.name;
-      if (e.isSymbolicLink()) h.update(`L ${r} -> ${await fsp.readlink(p)}\0`);
-      else if (e.isDirectory()) { h.update(`D ${r}\0`); await add(p, r); }
-      else if (e.isFile()) {
-        h.update(`F ${r}\0`);
-        await new Promise((res, rej) => fs.createReadStream(p).on('data', c => h.update(c)).on('end', res).on('error', rej));
-      }
-    }
-  }
-  await add(abs, '');
+  await pipeline(fs.createReadStream(abs), h);
   return h.digest('hex');
 }
 
@@ -251,7 +197,7 @@ function hydrateApp(app, { full = false } = {}) {
     license_count: q('SELECT COUNT(*) n FROM licenses WHERE app_id = ?').get(app.id).n,
   };
   if (full) {
-    out.versions = versions.map(v => ({ ...v, files: files.filter(f => f.version_id === v.id) }));
+    out.versions = versions.map(v => ({ ...v, files: files.filter(f => f.version_id === v.id).sort((x, y) => x.original_name.localeCompare(y.original_name, undefined, { numeric: true })) }));
     out.licenses = q('SELECT id, app_id, label, key_mask, registered_to, email, purchased, source, notes, created_at FROM licenses WHERE app_id = ? ORDER BY created_at').all(app.id);
   }
   return out;
@@ -328,8 +274,7 @@ app.get('/api/stats', wrap(async (req, res) => {
   try { const s = await fsp.statfs(LIBRARY_DIR); disk = { total: s.blocks * s.bsize, free: s.bavail * s.bsize }; } catch {}
   const recent = q(`SELECT v.id, v.version, v.created_at, a.id app_id, a.name, a.icon, a.category FROM versions v JOIN apps a ON a.id = v.app_id ORDER BY v.created_at DESC LIMIT 6`).all();
   const cats = q('SELECT category, COUNT(*) n FROM apps GROUP BY category').all();
-  const pending = q("SELECT COUNT(*) n FROM files WHERE sha256 = ''").get().n;
-  res.json({ fingerprinting: { pending, current: hashing.current }, apps: n('apps'), versions: n('versions'), files: n('files'), licenses: n('licenses'), devices: n('devices'), size, bad, verified, last_verify: lastVerify, disk, recent, categories: cats, verify: verifyJob });
+  res.json({ apps: n('apps'), versions: n('versions'), files: n('files'), licenses: n('licenses'), devices: n('devices'), size, bad, verified, last_verify: lastVerify, disk, recent, categories: cats, verify: verifyJob });
 }));
 
 // apps
@@ -370,7 +315,7 @@ app.put('/api/apps/:id', (req, res) => {
 });
 app.delete('/api/apps/:id', wrap(async (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
-  for (const f of q('SELECT * FROM files WHERE app_id = ?').all(a.id)) if (!isLinked(f)) await fsp.rm(absOf(f), { force: true });
+  for (const f of q('SELECT * FROM files WHERE app_id = ?').all(a.id)) await fsp.rm(absOf(f), { force: true });
   await fsp.rm(path.join(LIBRARY_DIR, a.folder, '_arca.json'), { force: true });
   await removeEmptyDirs(path.join(LIBRARY_DIR, a.folder));
   for (const m of [a.icon, a.banner]) if (m) await fsp.rm(path.join(MEDIA_DIR, m), { force: true });
@@ -437,7 +382,7 @@ app.put('/api/versions/:id', (req, res) => {
 });
 app.delete('/api/versions/:id', wrap(async (req, res) => {
   const v = need(q('SELECT * FROM versions WHERE id = ?').get(req.params.id), 'Version');
-  for (const f of q('SELECT * FROM files WHERE version_id = ?').all(v.id)) if (!isLinked(f)) await fsp.rm(absOf(f), { force: true });
+  for (const f of q('SELECT * FROM files WHERE version_id = ?').all(v.id)) await fsp.rm(absOf(f), { force: true });
   q('DELETE FROM versions WHERE id = ?').run(v.id);
   const a = q('SELECT folder FROM apps WHERE id = ?').get(v.app_id);
   await removeEmptyDirs(path.join(LIBRARY_DIR, a.folder, safeName(v.version, 'version')));
@@ -454,14 +399,15 @@ app.post('/api/versions/:id/files', (req, res, next) => {
   const absDir = inside(LIBRARY_DIR, relDir);
   fs.mkdirSync(absDir, { recursive: true });
 
-  const bb = Busboy({ headers: req.headers, preservePath: false });
+  const bb = Busboy({ headers: req.headers, preservePath: true });
   const fields = { kind: 'auto' };
   const jobs = [];
   let aborted = false;
   bb.on('field', (k, val) => { fields[k] = val; });
   bb.on('file', (_f, stream, info) => {
-    const orig = safeName(path.basename(info.filename || 'file'), 'file');
-    const kind = ['installer', 'disk-image', 'update', 'manual', 'artwork', 'other'].includes(fields.kind) ? fields.kind : kindFor(orig);
+    // keep subfolders from a folder upload ("Disc 1/Install.dmg"), each part made safe
+    const orig = String(info.filename || 'file').split(/[\\/]+/).filter(x => x && x !== '.' && x !== '..').map(x => safeName(x, 'file')).join('/') || 'file';
+    const kind = ['installer', 'disk-image', 'update', 'manual', 'artwork', 'other'].includes(fields.kind) ? fields.kind : kindFor(path.basename(orig));
     const tmp = path.join(TMP_DIR, uid());
     const hash = crypto.createHash('sha256');
     let size = 0;
@@ -470,6 +416,7 @@ app.post('/api/versions/:id/files', (req, res, next) => {
       let name = orig, i = 2;
       const ext = path.extname(orig), stem = orig.slice(0, orig.length - ext.length);
       while (fs.existsSync(path.join(absDir, name))) name = `${stem} (${i++})${ext}`;
+      await fsp.mkdir(path.dirname(path.join(absDir, name)), { recursive: true });
       await fsp.rename(tmp, path.join(absDir, name));
       const id = uid(), t = now();
       q(`INSERT INTO files (id,version_id,app_id,kind,original_name,rel_path,size,sha256,uploaded_at,verified_at,verify_status)
@@ -492,9 +439,6 @@ app.post('/api/versions/:id/files', (req, res, next) => {
 });
 app.get('/api/files/:id/download', (req, res) => {
   const f = need(q('SELECT * FROM files WHERE id = ?').get(req.params.id), 'File');
-  if (fs.existsSync(absOf(f)) && fs.statSync(absOf(f)).isDirectory()) {
-    return res.status(409).json({ error: `${f.original_name} is a bundle (a folder). Open it on the NAS through Finder instead.` });
-  }
   res.download(absOf(f), path.basename(f.original_name), { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'File missing on disk' });
   });
@@ -507,7 +451,7 @@ app.put('/api/files/:id', (req, res) => {
 });
 app.delete('/api/files/:id', wrap(async (req, res) => {
   const f = need(q('SELECT * FROM files WHERE id = ?').get(req.params.id), 'File');
-  if (!isLinked(f)) await fsp.rm(absOf(f), { force: true });
+  await fsp.rm(absOf(f), { force: true });
   q('DELETE FROM files WHERE id = ?').run(f.id);
   writeSidecar(f.app_id);
   res.json({ ok: true });
@@ -576,25 +520,6 @@ app.get('/api/devices/:id/compatible', (req, res) => {
   res.json({ device: d, apps: out });
 });
 
-// Background fingerprinting for linked files (they can be many gigabytes, so this never blocks a request)
-const hashQueue = [];
-let hashing = { current: '', done: 0 };
-async function runHashQueue() {
-  if (hashing.running) return;
-  hashing.running = true;
-  while (hashQueue.length) {
-    const id = hashQueue.shift();
-    const f = q('SELECT * FROM files WHERE id = ?').get(id);
-    if (!f) continue;
-    hashing.current = f.original_name;
-    try { q("UPDATE files SET sha256 = ?, verify_status = 'ok', verified_at = ? WHERE id = ?").run(await hashPath(absOf(f)), now(), f.id); }
-    catch { q("UPDATE files SET verify_status = 'missing', verified_at = ? WHERE id = ?").run(now(), f.id); }
-    hashing.done++;
-  }
-  hashing = { current: '', done: 0, running: false };
-}
-function queueHash(ids) { hashQueue.push(...ids); runHashQueue(); }
-
 // integrity check: re-hash every file to catch bit rot or missing files
 let verifyJob = { running: false, done: 0, total: 0, bad: [], started_at: '', finished_at: '' };
 app.get('/api/verify', (req, res) => res.json(verifyJob));
@@ -606,9 +531,7 @@ app.post('/api/verify', (req, res) => {
     for (const f of all) {
       let status = 'ok';
       try {
-        const digest = await hashPath(absOf(f));
-        if (!f.sha256) q('UPDATE files SET sha256 = ? WHERE id = ?').run(digest, f.id);
-        else if (digest !== f.sha256) status = 'mismatch';
+        if (await hashPath(absOf(f)) !== f.sha256) status = 'mismatch';
       } catch { status = 'missing'; }
       q('UPDATE files SET verify_status = ?, verified_at = ? WHERE id = ?').run(status, now(), f.id);
       if (status !== 'ok') verifyJob.bad.push({ id: f.id, app: f.app_name, name: f.original_name, status });
@@ -619,71 +542,6 @@ app.post('/api/verify', (req, res) => {
   })();
   res.json(verifyJob);
 });
-
-// ---------- import from an existing NAS folder (files are linked in place, never copied or changed) ----------
-app.get('/api/import/browse', wrap(async (req, res) => {
-  if (!importEnabled()) return res.json({ enabled: false, entries: [] });
-  const rel = String(req.query.path || '').replace(/^\/+/, '');
-  const abs = inside(IMPORT_DIR, rel);
-  const linked = new Set(q("SELECT rel_path FROM files WHERE root = 'import'").all().map(r => r.rel_path));
-  const entries = [];
-  for (const e of (await fsp.readdir(abs, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
-    if (SKIP_NAME.test(e.name)) continue;
-    const r = path.join(rel, e.name), p = path.join(abs, e.name);
-    if (e.isDirectory() && !BUNDLE_EXT.test(e.name)) {
-      const items = await walk(p, r);
-      entries.push({ name: e.name, path: r, type: 'folder', size: items.reduce((t, i) => t + i.size, 0), files: items.length, imported: items.length > 0 && items.every(i => linked.has(i.rel)) });
-    } else if (e.isDirectory() || e.isFile()) {
-      const bundle = e.isDirectory();
-      entries.push({ name: e.name, path: r, type: bundle ? 'bundle' : 'file', size: bundle ? await treeSize(p) : (await fsp.stat(p)).size, files: 1, imported: linked.has(r) });
-    }
-  }
-  res.json({ enabled: true, path: rel, entries });
-}));
-
-app.post('/api/import', wrap(async (req, res) => {
-  if (!importEnabled()) return res.status(400).json({ error: 'No import folder is mounted. Add a volume at /import in docker-compose.yml.' });
-  const items = Array.isArray(req.body?.items) ? req.body.items : [];
-  const summary = { apps: 0, versions: 0, files: 0, skipped: 0 };
-  const queued = [], touched = new Set();
-  for (const it of items) {
-    const name = String(it.name || '').trim(), version = String(it.version || '').trim() || '1.0';
-    if (!name || !it.path) continue;
-    const abs = inside(IMPORT_DIR, String(it.path));
-    const st = await fsp.stat(abs);
-    // app: reuse one with the same name, so several folders can become versions of one entry
-    let a = q('SELECT * FROM apps WHERE name = ? COLLATE NOCASE').get(name);
-    if (!a) {
-      const id = uid(), t = now(), folder = uniqueFolder(name);
-      fs.mkdirSync(path.join(LIBRARY_DIR, folder), { recursive: true });
-      q(`INSERT INTO apps (id,name,developer,category,platform,description,website,featured,folder,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,0,?,?,?)`).run(id, name, it.developer || '', it.category || 'Utilities', it.platform || 'macOS', it.description || '', '', folder, t, t);
-      a = q('SELECT * FROM apps WHERE id = ?').get(id); summary.apps++;
-    }
-    let v = q('SELECT * FROM versions WHERE app_id = ? AND version = ?').get(a.id, version);
-    if (!v) {
-      const id = uid();
-      q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(id, a.id, version, '', it.min_os || '', it.max_os || '', it.arch || '', it.notes || '', now());
-      v = q('SELECT * FROM versions WHERE id = ?').get(id); summary.versions++;
-    }
-    const list = st.isDirectory() && !BUNDLE_EXT.test(abs)
-      ? (await walk(abs, String(it.path))).map(x => ({ ...x, display: path.relative(String(it.path), x.rel) }))
-      : [{ rel: String(it.path), size: st.isDirectory() ? await treeSize(abs) : st.size, bundle: st.isDirectory(), display: path.basename(String(it.path)) }];
-    for (const x of list) {
-      if (q("SELECT 1 FROM files WHERE root = 'import' AND rel_path = ?").get(x.rel)) { summary.skipped++; continue; }
-      const id = uid(), t = now();
-      q(`INSERT INTO files (id,version_id,app_id,kind,original_name,rel_path,size,sha256,uploaded_at,verified_at,verify_status,root)
-         VALUES (?,?,?,?,?,?,?,'',?,'','pending','import')`).run(id, v.id, a.id, kindFor(x.display), x.display, x.rel, x.size, t);
-      queued.push(id); summary.files++;
-    }
-    q('UPDATE apps SET updated_at = ? WHERE id = ?').run(now(), a.id);
-    touched.add(a.id);
-  }
-  touched.forEach(writeSidecar);
-  queueHash(queued);
-  res.json(summary);
-}));
 
 // catalog export (no keys)
 app.get('/api/export', (req, res) => {
@@ -696,7 +554,7 @@ app.get('/api/export', (req, res) => {
     .json({ exported_at: now(), arca: VERSION, apps, devices: q('SELECT * FROM devices').all() });
 });
 
-app.get('/api/settings', (req, res) => res.json({ import_dir: importEnabled() ? IMPORT_DIR : '', import_smb: IMPORT_SMB, version: VERSION, data_dir: DATA_DIR, library_dir: LIBRARY_DIR, auth_required: !!PASSWORD, secret_from_env: !!process.env.ARCA_SECRET }));
+app.get('/api/settings', (req, res) => res.json({ version: VERSION, data_dir: DATA_DIR, library_dir: LIBRARY_DIR, auth_required: !!PASSWORD, secret_from_env: !!process.env.ARCA_SECRET }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 // The page is authored as a fragment (it doubles as the hosted preview), so wrap it in a full document here.
@@ -709,14 +567,11 @@ app.use((err, req, res, _next) => {
   if (!res.headersSent) res.status(err.status || 500).json({ error: err.message || 'Server error' });
 });
 
-// resume fingerprinting interrupted by a restart
-queueHash(q("SELECT id FROM files WHERE sha256 = ''").all().map(r => r.id));
-
 // clear abandoned partial uploads on start
 for (const f of fs.readdirSync(TMP_DIR)) fs.rmSync(path.join(TMP_DIR, f), { force: true });
 
 const server = app.listen(PORT, () => {
-  console.log(`[arca] v${VERSION} on :${PORT}  data=${DATA_DIR}  library=${LIBRARY_DIR}${importEnabled() ? '  import=' + IMPORT_DIR : ''}`);
+  console.log(`[arca] v${VERSION} on :${PORT}  data=${DATA_DIR}  library=${LIBRARY_DIR}`);
   if (!PASSWORD) console.warn('[arca] ARCA_PASSWORD is not set — anyone on your network can open Arca.');
 });
 server.requestTimeout = 0;   // multi-GB uploads would otherwise be cut off after 5 minutes

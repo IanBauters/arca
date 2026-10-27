@@ -7,7 +7,7 @@ A self-hosted software vault with an App Store–style interface. Arca keeps the
 - **Encrypted license keys.** Serials and product keys are stored with AES-256-GCM and only shown when you reveal them.
 - **Device compatibility.** Add the machines you still use (say, a Mac Pro 2013 on macOS 12.7.6) and Arca tells you which archived version of each app runs on them.
 - **Bit-rot check.** Every file is fingerprinted with SHA-256 on upload. *Settings → Verify all checksums* re-reads the library and flags anything changed or missing.
-- **Import from your NAS.** Mount an existing folder at `/import` (read-only is fine) and add what's already there without uploading or copying. Folder names like *Mac OS X v10.6 Snow Leopard* become *Mac OS X Snow Leopard 10.6*; installer apps stay intact as one item.
+- **Folder uploads.** Drop a whole folder, such as a set of install discs, and its subfolders are kept. Apps (.app) are zipped first with Finder › Compress.
 - **Operating systems.** Mac OS X, macOS and Classic Mac OS get their own category, and macOS installers from El Capitan on show Apple's steps for making a bootable USB installer.
 - **No upload limit.** Files stream straight to disk, so a 60 GB sound library uploads as easily as a 30 MB utility.
 
@@ -67,8 +67,6 @@ Back up **both** mounted folders, for example with Hyper Backup:
 | `PORT` | `8080` | Port inside the container. |
 | `DATA_DIR` | `/data` | Database, artwork, secret. |
 | `LIBRARY_DIR` | `/library` | Uploaded files. |
-| `IMPORT_DIR` | `/import` | Optional existing folder to link from. Arca never writes there. |
-| `IMPORT_SMB` | *(empty)* | Optional `smb://` address of that same folder, for the Finder buttons. |
 
 Arca is meant for your LAN or a VPN such as Tailscale. Don't forward its port to the internet.
 

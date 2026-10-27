@@ -12,10 +12,8 @@ services:
       ARCA_PASSWORD: "change-me"          # required for anything beyond a trusted LAN
       TZ: Europe/Brussels
       # ARCA_SECRET: ""                   # optional; otherwise /data/secret.key is generated. Back it up either way.
-      # IMPORT_SMB: "smb://diskstation/Software/Mac OS"   # optional: lets the Finder buttons open linked files on the NAS
     volumes:
       - /volume1/docker/arca/data:/data            # database + encryption key (small)
       - /volume1/Software/Arca:/library            # installers and disk images (big)
-      # - "/volume1/Software/Mac OS:/import:ro"    # optional: existing software to link in place (Library › Import from NAS)
     # Run as your DSM user so files in the shared folder are owned by you (find IDs with `id` over SSH):
     # user: "1026:100"
