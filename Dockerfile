@@ -8,4 +8,7 @@ COPY public ./public
 VOLUME ["/data", "/library"]
 EXPOSE 8080
 HEALTHCHECK --interval=60s --timeout=5s CMD wget -qO- http://127.0.0.1:8080/api/health || exit 1
+ARG ARCA_COMMIT=""
+ARG ARCA_BUILD_DATE=""
+ENV ARCA_COMMIT=$ARCA_COMMIT ARCA_BUILD_DATE=$ARCA_BUILD_DATE
 CMD ["node", "--no-warnings=ExperimentalWarning", "server.js"]

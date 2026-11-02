@@ -13,7 +13,9 @@ const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '1.1.0';
+const VERSION = '1.3.0';
+// Set by the GitHub build: short commit and build date, so Settings shows exactly which update is running
+const BUILD = { commit: process.env.ARCA_COMMIT || '', date: process.env.ARCA_BUILD_DATE || '' };
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const LIBRARY_DIR = path.resolve(process.env.LIBRARY_DIR || './library');
@@ -258,7 +260,7 @@ function cookies(req) {
 }
 const authed = (req) => !PASSWORD || validSession(cookies(req)[COOKIE]);
 
-app.get('/api/health', (req, res) => res.json({ ok: true, app: 'arca', version: VERSION, auth_required: !!PASSWORD, authenticated: authed(req) }));
+app.get('/api/health', (req, res) => res.json({ ok: true, app: 'arca', version: VERSION, build: BUILD, auth_required: !!PASSWORD, authenticated: authed(req) }));
 
 app.post('/api/login', async (req, res) => {
   const given = String(req.body?.password || '');
@@ -676,7 +678,7 @@ app.get('/api/export', (req, res) => {
     .json({ exported_at: now(), arca: VERSION, apps, devices: q('SELECT * FROM devices').all() });
 });
 
-app.get('/api/settings', (req, res) => res.json({ version: VERSION, data_dir: DATA_DIR, library_dir: LIBRARY_DIR, auth_required: !!PASSWORD, secret_from_env: !!process.env.ARCA_SECRET }));
+app.get('/api/settings', (req, res) => res.json({ version: VERSION, build: BUILD, data_dir: DATA_DIR, library_dir: LIBRARY_DIR, auth_required: !!PASSWORD, secret_from_env: !!process.env.ARCA_SECRET }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 // The page is authored as a fragment (it doubles as the hosted preview), so wrap it in a full document here.
@@ -693,7 +695,7 @@ app.use((err, req, res, _next) => {
 for (const f of fs.readdirSync(TMP_DIR)) fs.rmSync(path.join(TMP_DIR, f), { force: true });
 
 const server = app.listen(PORT, () => {
-  console.log(`[arca] v${VERSION} on :${PORT}  data=${DATA_DIR}  library=${LIBRARY_DIR}`);
+  console.log(`[arca] v${VERSION}${BUILD.commit ? ` (${BUILD.commit})` : ''} on :${PORT}  data=${DATA_DIR}  library=${LIBRARY_DIR}`);
   if (!PASSWORD) console.warn('[arca] ARCA_PASSWORD is not set — anyone on your network can open Arca.');
 });
 server.requestTimeout = 0;   // multi-GB uploads would otherwise be cut off after 5 minutes
