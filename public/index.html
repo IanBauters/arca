@@ -226,6 +226,22 @@ aside > .panel + .panel { margin-top: 20px; }
 .parent-link { border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 5px 12px; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; margin-bottom: 10px; }
 .parent-link b { font-weight: 600; }
 .addons { padding-block: 8px; }
+.key.old { opacity: .7; }
+.key.hit { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+.key-period { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px; margin: 2px 0 6px; }
+.khist { margin-top: 12px; }
+.khist summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--accent); padding: 4px 0; }
+.khist[open] summary { margin-bottom: 10px; }
+.kwhen { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 10px; }
+.kwhen label { color: var(--muted); }
+.kwhen input { border: 1px solid transparent; background: var(--tile); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.kwhen input:focus { border-color: var(--accent); outline: none; }
+.ksrc { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; }
+.ksrc-top { display: flex; gap: 8px; align-items: flex-start; }
+.ksrc-top svg { color: var(--muted); margin-top: 2px; flex: none; }
+.ksrc-st { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ksrc-acts { display: flex; gap: 12px; align-items: center; }
+.ksrc > .link { text-align: left; font-size: 13px; }
 .klist { display: grid; gap: 10px; }
 .krow { display: grid; grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center; background: var(--card); box-shadow: var(--shadow); border-radius: var(--r-md); padding: 12px 14px; }
 .krow .ic { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; cursor: pointer; }
@@ -501,6 +517,10 @@ function download(fileId) {
 }
 
 /* ============ demo data (only used when no server answers) ============ */
+// Known pages that publish rotating keys. Patterns are regular expressions; the first group (or the whole match) is used.
+const KEY_PRESETS = {
+  makemkv: { label: 'Beta key', url: 'https://forum.makemkv.com/forum/viewtopic.php?t=1053', pattern: 'T-[A-Za-z0-9_@]{40,}', until_pattern: 'valid until (?:the )?(end of [A-Za-z]+ \\d{4}|[^.]+?\\d{4})' },
+};
 const Demo = (() => {
   let n = 100; const id = () => 'd' + (n++);
   const t = (daysAgo) => new Date(Date.now() - daysAgo * 864e5).toISOString();
@@ -515,7 +535,7 @@ const Demo = (() => {
       versions.push(ver);
       (v.files || []).forEach(([name, size, kind]) => files.push({ id: id(), version_id: ver.id, app_id: app.id, kind: kind || 'installer', original_name: name, rel_path: `${app.name}/${ver.version}/${name}`, size, sha256: fakeHash(name), uploaded_at: ver.created_at, verified_at: t(2), verify_status: 'ok' }));
     });
-    keys.forEach(k => licenses.push({ id: id(), app_id: app.id, label: '', registered_to: '', email: '', purchased: '', source: '', notes: '', created_at: t(20), ...k, key_mask: '•••• •••• •••• ' + k.key.replace(/[\s-]/g, '').slice(-4) }));
+    keys.forEach(k => licenses.push({ id: id(), app_id: app.id, label: '', registered_to: '', email: '', purchased: '', source: '', notes: '', valid_from: '', valid_until: '', found_at: '', created_at: t(20), ...k, key_mask: '•••• •••• •••• ' + k.key.replace(/[\s-]/g, '').slice(-4) }));
     return app;
   }
   addApp({ name: 'Final Cut Pro', developer: 'Apple', category: 'Video', platform: 'macOS', featured: 1, age: 1,
@@ -544,6 +564,21 @@ const Demo = (() => {
   addApp({ name: 'Xcode', developer: 'Apple', category: 'Development', platform: 'macOS', age: 25, description: 'Kept for building on the Monterey machine.' }, [
     { version: '14.2', released: '2022-12-13', min_os: '12.5', arch: 'Universal', files: [['Xcode_14.2.xip', 7.4 * GB]] },
   ]);
+  // MakeMKV: monthly beta keys (example keys, not real ones)
+  const fakeBeta = (seed) => 'T-' + fakeHash('beta' + seed).replace(/[0-9a-f]/g, (c, i) => 'aB3dE5fG7hJ9kL_mN2pQ4rS6tU8vW0xYz'[(parseInt(c, 16) + i) % 33]).slice(0, 66);
+  const monthEnd = (y, m) => new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10);
+  const now0 = new Date(), betaKeys = [];
+  for (let i = 4; i >= 0; i--) {
+    const d = new Date(Date.UTC(now0.getFullYear(), now0.getMonth() - i, 1));
+    const until = monthEnd(d.getUTCFullYear(), d.getUTCMonth());
+    const from = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 26)).toISOString().slice(0, 10);
+    betaKeys.push({ label: 'Beta key', key: fakeBeta(i), source: 'forum.makemkv.com', valid_from: from, valid_until: until, found_at: from + 'T06:00:00Z' });
+  }
+  const mkv = addApp({ name: 'MakeMKV', developer: 'GuinpinSoft', category: 'Video', platform: 'macOS', age: 0.2, description: 'Free while in beta; the beta key changes every month or two.' }, [
+    { version: '1.18.2', arch: 'Universal', min_os: '10.13', files: [['makemkv_v1.18.2_osx.dmg', 42 * MB, 'disk-image']] },
+  ], betaKeys);
+  const keySources = { [mkv.id]: { app_id: mkv.id, ...KEY_PRESETS.makemkv, enabled: 1, last_checked: new Date(Date.now() - 2.4 * 3600e3).toISOString(), last_status: 'ok', last_message: `No new key. The current one is valid until ${betaKeys[4].valid_until}.` } };
+
   const ksp = addApp({ name: 'Kerbal Space Program', developer: 'Squad', category: 'Games', platform: 'macOS', age: 0.3, description: 'DRM-free copies from the Private Division store.' }, [
     { version: '1.12.5', arch: 'Universal', files: [['ksp-osx-1.12.5.zip', 2.9 * GB]] },
     { version: '1.12.3', arch: 'Intel 64-bit', files: [['ksp-osx-1.12.3.zip', 2.8 * GB]] },
@@ -582,7 +617,7 @@ const Demo = (() => {
     const fs = files.filter(f => f.app_id === a.id);
     const o = { parent_id: '', ...a, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
     if (full) {
-      o.versions = vs.map(v => ({ includes: '', ...v, files: fs.filter(f => f.version_id === v.id) })); o.licenses = licenses.filter(l => l.app_id === a.id).map(({ key, ...l }) => l);
+      o.versions = vs.map(v => ({ includes: '', ...v, files: fs.filter(f => f.version_id === v.id) })); o.licenses = licenses.filter(l => l.app_id === a.id).sort((x, y) => (y.valid_from || y.created_at).localeCompare(x.valid_from || x.created_at)).map(({ key, ...l }) => l); o.key_source = keySources[a.id] || null;
       o.addons = apps.filter(x => x.parent_id === a.id).sort((x, y) => x.name.localeCompare(y.name)).map(x => hydrate(x));
       const p = a.parent_id && appById(a.parent_id); o.parent = p ? { id: p.id, name: p.name, icon: p.icon, category: p.category } : null;
     }
@@ -621,8 +656,11 @@ const Demo = (() => {
     if (M('DELETE', /^versions\/[^/]+$/)) { const i = seg[1]; for (let k = files.length - 1; k >= 0; k--) if (files[k].version_id === i) files.splice(k, 1); versions.splice(versions.findIndex(v => v.id === i), 1); return { ok: true }; }
     if (M('DELETE', /^files\/[^/]+$/)) { files.splice(files.findIndex(f => f.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^licenses$/)) return licenses.map(licOut).sort((a, b) => a.app_name.localeCompare(b.app_name));
-    if (M('POST', /^apps\/[^/]+\/licenses$/)) { if (!body.key?.trim()) err('License key is required'); const l = { id: id(), app_id: seg[1], label: '', registered_to: '', email: '', purchased: '', source: '', notes: '', ...pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes']), key: body.key.trim(), created_at: t(0) }; l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); licenses.push(l); return licOut(l); }
-    if (M('PUT', /^licenses\/[^/]+$/)) { const l = licenses.find(x => x.id === seg[1]); Object.assign(l, pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes'])); if (body.key?.trim()) { l.key = body.key.trim(); l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); } return licOut(l); }
+    if (M('POST', /^apps\/[^/]+\/licenses$/)) { if (!body.key?.trim()) err('License key is required'); const l = { id: id(), app_id: seg[1], label: '', registered_to: '', email: '', purchased: '', source: '', notes: '', ...pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes', 'valid_from', 'valid_until']), key: body.key.trim(), created_at: t(0) }; l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); licenses.push(l); return licOut(l); }
+    if (M('PUT', /^licenses\/[^/]+$/)) { const l = licenses.find(x => x.id === seg[1]); Object.assign(l, pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes', 'valid_from', 'valid_until'])); if (body.key?.trim()) { l.key = body.key.trim(); l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); } return licOut(l); }
+    if (M('PUT', /^apps\/[^/]+\/key-source$/)) { if (!/^https?:\/\//.test(body.url || '')) err('Enter the full web address of the page, starting with https://'); keySources[seg[1]] = { app_id: seg[1], ...pickF(body, ['url', 'pattern', 'until_pattern', 'label']), enabled: body.enabled ? 1 : 0, last_checked: new Date().toISOString(), last_status: 'ok', last_message: 'Example data: a real check runs once Arca is on your NAS.' }; return { status: 'ok', message: keySources[seg[1]].last_message }; }
+    if (M('POST', /^apps\/[^/]+\/key-source\/check$/)) { const k = keySources[seg[1]]; Object.assign(k, { last_checked: new Date().toISOString(), last_status: 'ok', last_message: 'No new key. (Example data: the real check runs on your NAS.)' }); return { status: 'ok', message: k.last_message }; }
+    if (M('DELETE', /^apps\/[^/]+\/key-source$/)) { delete keySources[seg[1]]; return { ok: true }; }
     if (M('GET', /^licenses\/[^/]+\/reveal$/)) return { key: licenses.find(x => x.id === seg[1]).key };
     if (M('DELETE', /^licenses\/[^/]+$/)) { licenses.splice(licenses.findIndex(l => l.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^devices$/)) return devices.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -837,10 +875,7 @@ const Views = {
         </section>
         <aside>
           ${bootablePanel(a)}
-          <div class="panel">
-            <div class="panel-h"><h3>License keys</h3><button class="link" data-act="new-key">Add key</button></div>
-            ${a.licenses.length ? a.licenses.map(keyCard).join('') : '<p class="hint">Keep serials, product keys or purchase details here. They are encrypted on the NAS and only shown when you reveal them.</p>'}
-          </div>
+          ${licensePanel(a)}
           ${devs.length && a.category !== 'Operating Systems' ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
           <div class="panel">
             <div class="panel-h"><h3>About</h3></div>
@@ -855,20 +890,44 @@ const Views = {
       </div>`;
   },
 
+  after_app() {
+    const inp = $('#keyDate'); if (!inp) return;
+    const det = inp.closest('details');
+    det.addEventListener('toggle', () => { S.histOpen = det.open; });
+    const run = () => {
+      S.keyDate = inp.value;
+      document.querySelectorAll('.key.hit').forEach(k => k.classList.remove('hit'));
+      const out = $('#keyDateOut');
+      if (!inp.value) { out.textContent = ''; return; }
+      const k = keyOn(S.app.licenses, inp.value);
+      if (!k) { out.textContent = 'No temporary key covers that day.'; return; }
+      out.textContent = `${k.label || 'Key'} · ${keyPeriod(k)}`;
+      const el = $('#key-' + k.id); if (el) { el.classList.add('hit'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    };
+    inp.addEventListener('change', run);
+    if (inp.value) run();
+  },
+
   async keys() {
     setTitle('License keys');
     let ls = await api('GET', 'api/licenses');
     if (S.search) { const t = S.search.toLowerCase(); ls = ls.filter(l => [l.app_name, l.label, l.registered_to, l.source, l.email].some(x => String(x).toLowerCase().includes(t))); }
-    if (!ls.length) return `<div class="empty"><span class="logo">${ic('key')}</span><h3>${S.search ? 'No keys match your search' : 'No license keys yet'}</h3><p>Open an app and choose Add key. Keys are encrypted with AES-256 on the NAS.</p><button class="btn" data-act="go" data-v="library">Go to Library</button></div>`;
+    const byApp = {}; ls.forEach(l => (byApp[l.app_id] ||= []).push(l));
+    const rep = new Set(Object.values(byApp).flatMap(g => [...replacedIds(g)]));
+    const isOld = (l) => keyState(l) === 'expired' || rep.has(l.id);
+    const expired = ls.filter(isOld);
+    if (!S.showExpired && !S.search) ls = ls.filter(l => !isOld(l));
+    if (!ls.length && !expired.length) return `<div class="empty"><span class="logo">${ic('key')}</span><h3>${S.search ? 'No keys match your search' : 'No license keys yet'}</h3><p>Open an app and choose Add key. Keys are encrypted with AES-256 on the NAS.</p><button class="btn" data-act="go" data-v="library">Go to Library</button></div>`;
     return `<p class="hint" style="margin:0 0 16px">${ic('shield')} Keys are encrypted at rest. Reveal one only when you need it.</p>
       <div class="klist">${ls.map(l => `<div class="krow">
         <div class="ic" data-act="open-app" data-id="${l.app_id}">${iconHTML({ name: l.app_name, icon: l.app_icon, category: l.app_category })}</div>
-        <div class="t"><b>${esc(l.app_name)}</b><span>${esc(l.label || l.source || 'License')}${l.purchased ? ' · ' + fmtDate(l.purchased) : ''}</span></div>
+        <div class="t"><b>${esc(l.app_name)}</b><span>${esc(l.label || l.source || 'License')}${keyPeriod(l) ? ' · ' + esc(keyPeriod(l)) : l.purchased ? ' · ' + fmtDate(l.purchased) : ''}</span>${keyBadge(l, rep) ? `<div style="margin-top:4px">${keyBadge(l, rep)}</div>` : ''}</div>
         <div class="kv-col"><div class="key-val" id="kv-${l.id}" style="margin:0">${esc(S.revealed[l.id] || l.key_mask)}</div>${l.registered_to || l.email ? `<span class="hint">${esc([l.registered_to, l.email].filter(Boolean).join(' · '))}</span>` : ''}</div>
         <div class="acts" style="display:flex;gap:4px">
           <button class="ibtn" data-act="reveal" data-id="${l.id}" aria-label="Show or hide key" title="Show or hide">${ic(S.revealed[l.id] ? 'eyeoff' : 'eye')}</button>
           <button class="ibtn" data-act="copy-key" data-id="${l.id}" aria-label="Copy key" title="Copy">${ic('copy')}</button>
-        </div></div>`).join('')}</div>`;
+        </div></div>`).join('')}</div>
+      ${expired.length && !S.search ? `<p style="margin:16px 0 0"><button class="link" data-act="toggle-expired">${S.showExpired ? 'Hide' : 'Show'} ${expired.length} earlier temporary key${expired.length === 1 ? '' : 's'}</button></p>` : ''}`;
   },
 
   async devices() {
@@ -974,13 +1033,75 @@ function addonRow(x) {
     <div class="tx"><b>${esc(x.name)}</b><span class="num">${x.version_count ? `${x.version_count} version${x.version_count === 1 ? '' : 's'} · ${fmtSize(x.total_size)}` : 'No files yet'}${x.license_count ? ` · ${x.license_count} key${x.license_count === 1 ? '' : 's'}` : ''}</span></div>
     ${x.latest ? `<span class="pill num">v${esc(x.latest)}</span>` : ''}</div>`;
 }
-function keyCard(l) {
-  return `<div class="key">
+/* ============ temporary keys ============ */
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// permanent | current | upcoming | expired
+function keyState(l, on = todayISO()) {
+  if (!l.valid_from && !l.valid_until) return 'permanent';
+  if (l.valid_until && l.valid_until < on) return 'expired';
+  if (l.valid_from && l.valid_from > on) return 'upcoming';
+  return 'current';
+}
+function keyPeriod(l) {
+  if (l.valid_from && l.valid_until) return `${fmtDate(l.valid_from)} – ${fmtDate(l.valid_until)}`;
+  if (l.valid_until) return `until ${fmtDate(l.valid_until)}`;
+  if (l.valid_from) return `from ${fmtDate(l.valid_from)}`;
+  return '';
+}
+// Among temporary keys that are valid today, only the newest is "current"; older overlapping ones were replaced.
+function replacedIds(list) {
+  const live = list.filter(l => (l.valid_from || l.valid_until) && keyState(l) === 'current')
+    .sort((a, b) => (b.valid_from || '').localeCompare(a.valid_from || '') || (b.created_at || '').localeCompare(a.created_at || ''));
+  return new Set(live.slice(1).map(l => l.id));
+}
+function keyBadge(l, replaced) {
+  if (replaced?.has(l.id)) return '<span class="pill grey">Replaced</span>';
+  const st = keyState(l);
+  if (st === 'permanent') return '';
+  const days = l.valid_until ? Math.round((new Date(l.valid_until + 'T23:59:59') - Date.now()) / 864e5) : null;
+  if (st === 'current') return `<span class="pill ${days !== null && days <= 7 ? 'warn' : 'good'}">${days !== null && days <= 7 ? `Expires in ${Math.max(0, days)} day${days === 1 ? '' : 's'}` : 'Current'}</span>`;
+  if (st === 'upcoming') return '<span class="pill">Upcoming</span>';
+  return '<span class="pill grey">Expired</span>';
+}
+// the key that applied on a given day (newest start wins when periods overlap)
+function keyOn(list, date) {
+  return list.filter(l => (l.valid_from || l.valid_until) && keyState(l, date) === 'current')
+    .sort((a, b) => (b.valid_from || '').localeCompare(a.valid_from || ''))[0] || null;
+}
+function licensePanel(a) {
+  const rep = replacedIds(a.licenses);
+  const isOld = (l) => keyState(l) === 'expired' || rep.has(l.id);
+  const cur = a.licenses.filter(l => !isOld(l)), old = a.licenses.filter(isOld);
+  const card = (l) => keyCard(l, rep);
+  const temp = a.licenses.filter(l => l.valid_from || l.valid_until);
+  const ks = a.key_source;
+  const stCls = ks?.last_status === 'error' ? 'bad' : ks?.last_status === 'new' ? 'good' : 'grey';
+  return `<div class="panel">
+    <div class="panel-h"><h3>License keys</h3><button class="link" data-act="new-key">Add key</button></div>
+    ${cur.length ? cur.map(card).join('') : a.licenses.length ? '<p class="hint" style="margin:0">No key is valid today. Earlier keys are listed below.</p>' : '<p class="hint">Keep serials, product keys or purchase details here. They are encrypted on the NAS and only shown when you reveal them. Temporary keys get a period, so you can look back later.</p>'}
+    ${old.length || temp.length > 1 ? `<details class="khist" ${S.histOpen ? 'open' : ''}>
+      <summary>${old.length ? `Earlier keys (${old.length})` : 'Look up a key by date'}</summary>
+      <div class="kwhen"><label for="keyDate">Key in use on</label><input type="date" id="keyDate" value="${esc(S.keyDate || '')}"><span id="keyDateOut" class="hint"></span></div>
+      ${old.map(card).join('')}
+    </details>` : ''}
+    <div class="ksrc">
+      ${ks ? `<div class="ksrc-top">${ic('refresh', 'i" style="width:15px;height:15px')}<span>Checks <b>${esc(hostOf(ks.url))}</b> for new keys every 6 hours${ks.enabled ? '' : ' (paused)'}</span></div>
+        <div class="ksrc-st"><span class="pill ${stCls}">${ks.last_status === 'error' ? 'Problem' : ks.last_status === 'new' ? 'New key' : ks.last_checked ? 'Up to date' : 'Not checked yet'}</span><span class="hint">${esc(ks.last_message || '')}${ks.last_checked ? ` · ${ago(ks.last_checked)}` : ''}</span></div>
+        <div class="ksrc-acts"><button class="btn soft sm" data-act="check-keys">${ic('refresh')}<span>Check now</span></button><button class="link" data-act="key-source">Settings</button></div>`
+      : `<button class="link" data-act="key-source">${ic('refresh', 'i" style="width:14px;height:14px;vertical-align:-2px')} Check a web page for new keys automatically</button>`}
+    </div>
+  </div>`;
+}
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+function keyCard(l, rep) {
+  const period = keyPeriod(l), state = keyState(l);
+  return `<div class="key ${state === 'expired' || rep?.has(l.id) ? 'old' : ''}" id="key-${l.id}">
     <div class="key-top"><b>${esc(l.label || 'License')}</b><span style="display:flex;gap:2px">
       <button class="ibtn" data-act="reveal" data-id="${l.id}" aria-label="Show or hide key">${ic(S.revealed[l.id] ? 'eyeoff' : 'eye')}</button>
       <button class="ibtn" data-act="copy-key" data-id="${l.id}" aria-label="Copy key">${ic('copy')}</button>
       <button class="ibtn" data-act="edit-key" data-id="${l.id}" aria-label="Edit key">${ic('edit')}</button></span></div>
     <div class="key-val" id="kv-${l.id}">${esc(S.revealed[l.id] || l.key_mask)}</div>
+    ${period ? `<div class="key-period">${keyBadge(l, rep)}<span class="num">${esc(period)}</span>${l.found_at ? `<span class="hint" title="Found automatically on ${esc(fmtDate(l.found_at))}">${ic('refresh', 'i" style="width:12px;height:12px;vertical-align:-1px')} auto</span>` : ''}</div>` : ''}
     <div class="key-meta">${esc([l.registered_to, l.email, l.source, l.purchased && fmtDate(l.purchased)].filter(Boolean).join(' · '))}</div>
   </div>`;
 }
@@ -1191,6 +1312,8 @@ function keyModal(existing) {
       { name: 'registered_to', label: 'Registered to', ph: 'Name' },
       { name: 'email', label: 'Account email', type: 'email' },
       { name: 'purchased', label: 'Purchase date', type: 'date' },
+      { name: 'valid_from', label: 'Valid from (temporary keys)', type: 'date' },
+      { name: 'valid_until', label: 'Valid until (temporary keys)', type: 'date' },
       { name: 'notes', label: 'Notes', type: 'textarea', full: true, ph: 'Seats, upgrade path, where the box is kept…' },
     ],
     values: existing ? { ...existing, key: '' } : {},
@@ -1202,6 +1325,31 @@ function keyModal(existing) {
       closeModal(); toast(existing ? 'Key updated' : 'Key saved'); refreshChrome(); render();
     },
   });
+}
+function keySourceModal() {
+  const a = S.app, ks = a.key_source;
+  const guess = /makemkv/i.test(a.name) ? KEY_PRESETS.makemkv : {};
+  modal({
+    title: 'Check for new keys',
+    lead: 'Arca opens this page every 6 hours. When it shows a key that isn’t stored yet, Arca saves it with its period and keeps the old one as history.',
+    fields: [
+      { name: 'url', label: 'Page with the key', full: true, ph: 'https://forum.makemkv.com/forum/viewtopic.php?t=1053', required: true },
+      { name: 'pattern', label: 'What the key looks like (regular expression)', full: true, mono: true, ph: 'T-[A-Za-z0-9_@]{40,}', required: true },
+      { name: 'until_pattern', label: 'Where the end date is (optional)', full: true, mono: true, ph: 'valid until (end of [A-Za-z]+ \\d{4})' },
+      { name: 'label', label: 'Label for new keys', ph: 'Beta key' },
+      { name: 'enabled', label: 'Check automatically', type: 'checkbox' },
+    ],
+    values: ks ? { ...ks, enabled: !!ks.enabled } : { ...guess, enabled: true },
+    body: `<div class="tip">${ic('info')}<span>${ks ? '' : guess.url ? 'Filled in for the MakeMKV beta key page. ' : `<button type="button" class="link" id="presetMkv" style="font-size:inherit">Use the MakeMKV beta key page</button>. `}Saving runs a check straight away, so you see at once whether the key is found.</span></div>`,
+    submit: 'Save and check',
+    danger: ks ? 'Stop checking' : null,
+    onDanger: async () => { await api('DELETE', `api/apps/${a.id}/key-source`); closeModal(); toast('Automatic check removed. Stored keys stay.'); render(); },
+    onSubmit: async (d) => {
+      const r = await api('PUT', `api/apps/${a.id}/key-source`, d);
+      closeModal(); toast(r.message); refreshChrome(); render();
+    },
+  });
+  $('#presetMkv')?.addEventListener('click', () => fillForm($('#modal form'), KEY_PRESETS.makemkv));
 }
 // Mac model identifiers tell Intel from Apple Silicon (e.g. MacPro6,1 is Intel, Mac14,2 is Apple Silicon).
 function guessDeviceArch(model) {
@@ -1330,6 +1478,9 @@ document.addEventListener('click', async (e) => {
       case 'del-file': { const f = S.app.versions.flatMap(v => v.files).find(x => x.id === id); confirmBox(`Delete ${f.original_name}?`, `${fmtSize(f.size)} will be removed from the NAS.`, 'Delete file', async () => { await api('DELETE', 'api/files/' + id); toast('File deleted'); refreshChrome(); render(); }); break; }
       case 'download': download(id); break;
       case 'new-key': keyModal(); break;
+      case 'key-source': keySourceModal(); break;
+      case 'toggle-expired': S.showExpired = !S.showExpired; render(); break;
+      case 'check-keys': { el.disabled = true; const r = await api('POST', `api/apps/${S.app.id}/key-source/check`); toast(r.message); refreshChrome(); render(); break; }
       case 'edit-key': keyModal(S.app.licenses.find(l => l.id === id)); break;
       case 'reveal': {
         if (S.revealed[id]) delete S.revealed[id]; else S.revealed[id] = (await api('GET', `api/licenses/${id}/reveal`)).key;

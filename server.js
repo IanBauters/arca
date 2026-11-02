@@ -107,6 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 // migrations for databases created by earlier versions
 if (!db.prepare("SELECT 1 FROM pragma_table_info('apps') WHERE name = 'parent_id'").get()) db.exec("ALTER TABLE apps ADD COLUMN parent_id TEXT DEFAULT ''");
 if (!db.prepare("SELECT 1 FROM pragma_table_info('versions') WHERE name = 'includes'").get()) db.exec("ALTER TABLE versions ADD COLUMN includes TEXT DEFAULT ''");
+for (const col of ['valid_from', 'valid_until', 'found_at']) if (!db.prepare("SELECT 1 FROM pragma_table_info('licenses') WHERE name = ?").get(col)) db.exec(`ALTER TABLE licenses ADD COLUMN ${col} TEXT DEFAULT ''`);
+db.exec(`CREATE TABLE IF NOT EXISTS key_sources (
+  app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, url TEXT NOT NULL, pattern TEXT NOT NULL, until_pattern TEXT DEFAULT '',
+  label TEXT DEFAULT '', enabled INTEGER DEFAULT 1, last_checked TEXT DEFAULT '', last_status TEXT DEFAULT '', last_message TEXT DEFAULT ''
+)`);
 for (const col of ['arch', 'serial']) if (!db.prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = ?").get(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT DEFAULT ''`);
 
 const q = (sql) => db.prepare(sql);
@@ -202,7 +207,8 @@ function hydrateApp(app, { full = false } = {}) {
   };
   if (full) {
     out.versions = versions.map(v => ({ ...v, files: files.filter(f => f.version_id === v.id).sort((x, y) => x.original_name.localeCompare(y.original_name, undefined, { numeric: true })) }));
-    out.licenses = q('SELECT id, app_id, label, key_mask, registered_to, email, purchased, source, notes, created_at FROM licenses WHERE app_id = ? ORDER BY created_at').all(app.id);
+    out.licenses = q("SELECT id, app_id, label, key_mask, registered_to, email, purchased, source, notes, valid_from, valid_until, found_at, created_at FROM licenses WHERE app_id = ? ORDER BY CASE WHEN valid_from = '' THEN created_at ELSE valid_from END DESC, created_at DESC").all(app.id);
+    out.key_source = q('SELECT * FROM key_sources WHERE app_id = ?').get(app.id) || null;
     out.addons = q('SELECT * FROM apps WHERE parent_id = ? ORDER BY name COLLATE NOCASE').all(app.id).map(x => hydrateApp(x));
     const parent = app.parent_id ? q('SELECT id, name, icon, category FROM apps WHERE id = ?').get(app.parent_id) : null;
     out.parent = parent || null;
@@ -484,21 +490,27 @@ app.delete('/api/files/:id', wrap(async (req, res) => {
 }));
 
 // licenses (keys encrypted at rest, only revealed on explicit request)
-const LIC_FIELDS = ['label', 'registered_to', 'email', 'purchased', 'source', 'notes'];
-const licOut = (id) => q('SELECT l.id, l.app_id, l.label, l.key_mask, l.registered_to, l.email, l.purchased, l.source, l.notes, l.created_at, a.name app_name, a.icon app_icon, a.category app_category FROM licenses l JOIN apps a ON a.id = l.app_id WHERE l.id = ?').get(id);
+// A key with a validity period is temporary (beta keys, trials, subscriptions); expired ones stay as history.
+function insertLicense(appId, key, b, extra = {}) {
+  const id = uid();
+  q(`INSERT INTO licenses (id,app_id,label,key_enc,key_mask,registered_to,email,purchased,source,notes,valid_from,valid_until,found_at,created_at)
+     VALUES (:id,:app,:label,:enc,:mask,:registered_to,:email,:purchased,:source,:notes,:valid_from,:valid_until,:found_at,:t)`).run({
+    id, app: appId, enc: encrypt(key), mask: mask(key), t: now(), found_at: extra.found_at || '',
+    label: b.label || '', registered_to: b.registered_to || '', email: b.email || '', purchased: b.purchased || '', source: b.source || '', notes: b.notes || '',
+    valid_from: b.valid_from || '', valid_until: b.valid_until || '',
+  });
+  return id;
+}
+const LIC_FIELDS = ['label', 'registered_to', 'email', 'purchased', 'source', 'notes', 'valid_from', 'valid_until'];
+const licOut = (id) => q('SELECT l.id, l.app_id, l.label, l.key_mask, l.registered_to, l.email, l.purchased, l.source, l.notes, l.created_at, l.valid_from, l.valid_until, l.found_at, a.name app_name, a.icon app_icon, a.category app_category FROM licenses l JOIN apps a ON a.id = l.app_id WHERE l.id = ?').get(id);
 app.get('/api/licenses', (req, res) => {
-  res.json(q('SELECT l.id, l.app_id, l.label, l.key_mask, l.registered_to, l.email, l.purchased, l.source, l.notes, l.created_at, a.name app_name, a.icon app_icon, a.category app_category FROM licenses l JOIN apps a ON a.id = l.app_id ORDER BY a.name COLLATE NOCASE, l.created_at').all());
+  res.json(q('SELECT l.id, l.app_id, l.label, l.key_mask, l.registered_to, l.email, l.purchased, l.source, l.notes, l.created_at, l.valid_from, l.valid_until, l.found_at, a.name app_name, a.icon app_icon, a.category app_category FROM licenses l JOIN apps a ON a.id = l.app_id ORDER BY a.name COLLATE NOCASE, l.created_at').all());
 });
 app.post('/api/apps/:id/licenses', (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
   const key = String(req.body?.key || '').trim();
   if (!key) return res.status(400).json({ error: 'License key is required' });
-  const b = pick(req.body, LIC_FIELDS), id = uid();
-  q(`INSERT INTO licenses (id,app_id,label,key_enc,key_mask,registered_to,email,purchased,source,notes,created_at)
-     VALUES (:id,:app,:label,:enc,:mask,:registered_to,:email,:purchased,:source,:notes,:t)`).run({
-    id, app: a.id, enc: encrypt(key), mask: mask(key), t: now(),
-    label: b.label || '', registered_to: b.registered_to || '', email: b.email || '', purchased: b.purchased || '', source: b.source || '', notes: b.notes || '',
-  });
+  const id = insertLicense(a.id, key, pick(req.body, LIC_FIELDS));
   res.status(201).json(licOut(id));
 });
 app.put('/api/licenses/:id', (req, res) => {
@@ -506,7 +518,7 @@ app.put('/api/licenses/:id', (req, res) => {
   const b = { ...l, ...pick(req.body || {}, LIC_FIELDS) };
   const key = String(req.body?.key || '').trim();
   q(`UPDATE licenses SET label=:label, registered_to=:registered_to, email=:email, purchased=:purchased, source=:source, notes=:notes,
-     key_enc=:enc, key_mask=:mask WHERE id=:id`).run({ ...pick(b, LIC_FIELDS), enc: key ? encrypt(key) : l.key_enc, mask: key ? mask(key) : l.key_mask, id: l.id });
+     valid_from=:valid_from, valid_until=:valid_until, key_enc=:enc, key_mask=:mask WHERE id=:id`).run({ ...pick(b, LIC_FIELDS), enc: key ? encrypt(key) : l.key_enc, mask: key ? mask(key) : l.key_mask, id: l.id });
   res.json(licOut(l.id));
 });
 app.get('/api/licenses/:id/reveal', (req, res) => {
@@ -545,6 +557,90 @@ app.get('/api/devices/:id/compatible', (req, res) => {
   }).filter(a => a.platform === d.platform);
   res.json({ device: d, apps: out });
 });
+
+// ---------- automatic key checks (e.g. the MakeMKV beta key page) ----------
+const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const iso = (d) => d.toISOString().slice(0, 10);
+// "end of November 2026", "30 November 2026", "November 30, 2026", "2026-11-30", "30.11.2026" -> YYYY-MM-DD
+function parseUntil(text) {
+  const t = String(text || '').trim().toLowerCase();
+  let m = t.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  const mi = MONTHS.findIndex(x => t.includes(x) || t.includes(x.slice(0, 3) + ' '));
+  const y = (t.match(/\b(20\d{2})\b/) || [])[1];
+  if (mi < 0 || !y) return '';
+  const d = (t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b(?!\d)/) || [])[1];
+  if (d && !/end of/.test(t) && +d <= 31) return `${y}-${String(mi + 1).padStart(2, '0')}-${d.padStart(2, '0')}`;
+  return iso(new Date(Date.UTC(+y, mi + 1, 0))); // last day of that month
+}
+function htmlToText(html) {
+  return String(html).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+/g, ' ');
+}
+function extractKey(text, src) {
+  let re; try { re = new RegExp(src.pattern); } catch { throw new Error('The key pattern is not a valid regular expression'); }
+  const m = text.match(re);
+  if (!m) return null;
+  const key = (m[1] || m[0]).trim();
+  let until = '';
+  if (src.until_pattern) {
+    try { const u = text.match(new RegExp(src.until_pattern, 'i')); if (u) until = parseUntil(u[1] || u[0]); } catch {}
+  }
+  return { key, until };
+}
+async function checkKeySource(appId) {
+  const src = q('SELECT * FROM key_sources WHERE app_id = ?').get(appId);
+  if (!src) throw Object.assign(new Error('No automatic check set up'), { status: 404 });
+  const done = (status, message, extra = {}) => {
+    q('UPDATE key_sources SET last_checked = ?, last_status = ?, last_message = ? WHERE app_id = ?').run(now(), status, message, appId);
+    return { status, message, ...extra };
+  };
+  let text;
+  try {
+    const r = await fetch(src.url, { signal: AbortSignal.timeout(20000), redirect: 'follow', headers: { 'User-Agent': `Arca/${VERSION} (self-hosted software archive)` } });
+    if (!r.ok) return done('error', `The page answered with HTTP ${r.status}`);
+    const body = await r.text();
+    text = htmlToText(body.slice(0, 2_000_000));
+  } catch (e) { return done('error', `Could not reach the page (${e.cause?.code || e.name || e.message})`); }
+  let found;
+  try { found = extractKey(text, src); } catch (e) { return done('error', e.message); }
+  if (!found) return done('error', 'The page loaded, but no key matching the pattern was found');
+  // already known?
+  for (const l of q('SELECT id, key_enc, valid_until FROM licenses WHERE app_id = ?').all(appId)) {
+    let k = ''; try { k = decrypt(l.key_enc); } catch {}
+    if (k === found.key) {
+      if (found.until && found.until !== l.valid_until) q('UPDATE licenses SET valid_until = ? WHERE id = ?').run(found.until, l.id);
+      return done('ok', `No new key. The current one is valid until ${found.until || 'an unknown date'}.`);
+    }
+  }
+  const today = iso(new Date());
+  // close an open-ended previous automatic key, so the history has clear periods
+  const prev = q("SELECT id FROM licenses WHERE app_id = ? AND found_at <> '' AND valid_until = '' ORDER BY found_at DESC LIMIT 1").get(appId);
+  if (prev) q('UPDATE licenses SET valid_until = ? WHERE id = ?').run(iso(new Date(Date.now() - 864e5)), prev.id);
+  const id = insertLicense(appId, found.key, { label: src.label || 'Temporary key', source: new URL(src.url).hostname, valid_from: today, valid_until: found.until }, { found_at: now() });
+  console.log(`[arca] New key found for app ${appId}, valid until ${found.until || '?'}`);
+  return done('new', `New key found${found.until ? `, valid until ${found.until}` : ''}.`, { license_id: id });
+}
+const SRC_FIELDS = ['url', 'pattern', 'until_pattern', 'label', 'enabled'];
+app.put('/api/apps/:id/key-source', wrap(async (req, res) => {
+  const a = need(q('SELECT id FROM apps WHERE id = ?').get(req.params.id), 'App');
+  const b = pick(req.body || {}, SRC_FIELDS);
+  let u; try { u = new URL(String(b.url || '')); } catch {}
+  if (!u || !/^https?:$/.test(u.protocol)) return res.status(400).json({ error: 'Enter the full web address of the page, starting with https://' });
+  try { new RegExp(String(b.pattern || '')); if (!b.pattern) throw 0; } catch { return res.status(400).json({ error: 'The key pattern is missing or not a valid regular expression' }); }
+  q(`INSERT INTO key_sources (app_id,url,pattern,until_pattern,label,enabled) VALUES (:app,:url,:pattern,:until_pattern,:label,:enabled)
+     ON CONFLICT(app_id) DO UPDATE SET url=excluded.url, pattern=excluded.pattern, until_pattern=excluded.until_pattern, label=excluded.label, enabled=excluded.enabled`)
+    .run({ app: a.id, url: u.href, pattern: b.pattern, until_pattern: b.until_pattern || '', label: b.label || '', enabled: b.enabled === false || b.enabled === 0 ? 0 : 1 });
+  res.json(await checkKeySource(a.id));
+}));
+app.post('/api/apps/:id/key-source/check', wrap(async (req, res) => res.json(await checkKeySource(req.params.id))));
+app.delete('/api/apps/:id/key-source', (req, res) => { q('DELETE FROM key_sources WHERE app_id = ?').run(req.params.id); res.json({ ok: true }); });
+// check every enabled source a minute after start and then every 6 hours
+async function checkAllSources() {
+  for (const s of q('SELECT app_id FROM key_sources WHERE enabled = 1').all()) { try { await checkKeySource(s.app_id); } catch {} }
+}
+setTimeout(checkAllSources, 60_000).unref();
+setInterval(checkAllSources, 6 * 3600_000).unref();
 
 // integrity check: re-hash every file to catch bit rot or missing files
 let verifyJob = { running: false, done: 0, total: 0, bad: [], started_at: '', finished_at: '' };
