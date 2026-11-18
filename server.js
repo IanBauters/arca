@@ -13,7 +13,7 @@ const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 // Set by the GitHub build: short commit and build date, so Settings shows exactly which update is running
 const BUILD = { commit: process.env.ARCA_COMMIT || '', date: process.env.ARCA_BUILD_DATE || '' };
 const PORT = Number(process.env.PORT || 8080);
@@ -110,6 +110,12 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 if (!db.prepare("SELECT 1 FROM pragma_table_info('apps') WHERE name = 'parent_id'").get()) db.exec("ALTER TABLE apps ADD COLUMN parent_id TEXT DEFAULT ''");
 if (!db.prepare("SELECT 1 FROM pragma_table_info('versions') WHERE name = 'includes'").get()) db.exec("ALTER TABLE versions ADD COLUMN includes TEXT DEFAULT ''");
 for (const col of ['valid_from', 'valid_until', 'found_at']) if (!db.prepare("SELECT 1 FROM pragma_table_info('licenses') WHERE name = ?").get(col)) db.exec(`ALTER TABLE licenses ADD COLUMN ${col} TEXT DEFAULT ''`);
+db.exec(`CREATE TABLE IF NOT EXISTS update_sources (
+  app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, type TEXT NOT NULL, ref TEXT NOT NULL, pattern TEXT DEFAULT '',
+  download_url TEXT DEFAULT '', enabled INTEGER DEFAULT 1, last_checked TEXT DEFAULT '', last_status TEXT DEFAULT '', last_message TEXT DEFAULT '',
+  latest_version TEXT DEFAULT '', latest_date TEXT DEFAULT '', latest_notes TEXT DEFAULT '', latest_url TEXT DEFAULT '', latest_min_os TEXT DEFAULT '',
+  dismissed_version TEXT DEFAULT ''
+)`);
 db.exec(`CREATE TABLE IF NOT EXISTS key_sources (
   app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, url TEXT NOT NULL, pattern TEXT NOT NULL, until_pattern TEXT DEFAULT '',
   label TEXT DEFAULT '', enabled INTEGER DEFAULT 1, last_checked TEXT DEFAULT '', last_status TEXT DEFAULT '', last_message TEXT DEFAULT ''
@@ -194,6 +200,13 @@ function compat(version, app, device) {
 }
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => o[k] !== undefined).map(k => [k, o[k] == null ? '' : o[k]]));
 
+// Compares the newest version found online with the newest one in the vault.
+function updateState(appId, have) {
+  const u = q('SELECT * FROM update_sources WHERE app_id = ?').get(appId);
+  if (!u) return null;
+  const newer = !!u.latest_version && (!have || (cmpVer(u.latest_version, have) ?? (u.latest_version !== have ? 1 : 0)) > 0);
+  return { ...u, have, available: newer && u.latest_version !== u.dismissed_version };
+}
 function hydrateApp(app, { full = false } = {}) {
   const versions = q('SELECT * FROM versions WHERE app_id = ?').all(app.id)
     .sort((a, b) => (cmpVer(b.version, a.version) ?? 0) || b.created_at.localeCompare(a.created_at));
@@ -207,6 +220,7 @@ function hydrateApp(app, { full = false } = {}) {
     license_count: q('SELECT COUNT(*) n FROM licenses WHERE app_id = ?').get(app.id).n,
     addon_count: q("SELECT COUNT(*) n FROM apps WHERE parent_id = ?").get(app.id).n,
   };
+  out.update = updateState(app.id, out.latest);
   if (full) {
     out.versions = versions.map(v => ({ ...v, files: files.filter(f => f.version_id === v.id).sort((x, y) => x.original_name.localeCompare(y.original_name, undefined, { numeric: true })) }));
     out.licenses = q("SELECT id, app_id, label, key_mask, registered_to, email, purchased, source, notes, valid_from, valid_until, found_at, created_at FROM licenses WHERE app_id = ? ORDER BY CASE WHEN valid_from = '' THEN created_at ELSE valid_from END DESC, created_at DESC").all(app.id);
@@ -291,7 +305,9 @@ app.get('/api/stats', wrap(async (req, res) => {
   try { const s = await fsp.statfs(LIBRARY_DIR); disk = { total: s.blocks * s.bsize, free: s.bavail * s.bsize }; } catch {}
   const recent = q(`SELECT v.id, v.version, v.created_at, a.id app_id, a.name, a.icon, a.category FROM versions v JOIN apps a ON a.id = v.app_id ORDER BY v.created_at DESC LIMIT 6`).all();
   const cats = q("SELECT category, COUNT(*) n FROM apps WHERE parent_id = '' GROUP BY category").all();
-  res.json({ apps: n('apps'), versions: n('versions'), files: n('files'), licenses: n('licenses'), devices: n('devices'), size, bad, verified, last_verify: lastVerify, disk, recent, categories: cats, verify: verifyJob });
+  const updates = q('SELECT a.* FROM apps a JOIN update_sources u ON u.app_id = a.id').all().map(a => hydrateApp(a)).filter(a => a.update?.available)
+    .map(a => ({ id: a.id, name: a.name, icon: a.icon, category: a.category, have: a.latest, latest: a.update.latest_version, date: a.update.latest_date }));
+  res.json({ updates, apps: n('apps'), versions: n('versions'), files: n('files'), licenses: n('licenses'), devices: n('devices'), size, bad, verified, last_verify: lastVerify, disk, recent, categories: cats, verify: verifyJob });
 }));
 
 // apps
@@ -559,6 +575,96 @@ app.get('/api/devices/:id/compatible', (req, res) => {
   }).filter(a => a.platform === d.platform);
   res.json({ device: d, apps: out });
 });
+
+// ---------- new-version checks (Mac App Store, Sparkle feeds, GitHub releases, any web page) ----------
+const UA = { 'User-Agent': `Arca/${VERSION} (self-hosted software archive)` };
+async function getText(url, accept) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000), redirect: 'follow', headers: { ...UA, ...(accept ? { Accept: accept } : {}) } });
+  if (!r.ok) throw new Error(`The page answered with HTTP ${r.status}`);
+  return (await r.text()).slice(0, 4_000_000);
+}
+const newest = (list) => list.filter(x => x.version).sort((a, b) => (cmpVer(b.version, a.version) ?? 0))[0] || null;
+const stripTags = (t) => htmlToText(t).replace(/\n{3,}/g, '\n\n').trim();
+const day = (d) => { const x = new Date(d); return isNaN(x) ? '' : x.toISOString().slice(0, 10); };
+const LOOKUPS = {
+  // Apple's public lookup: by bundle ID (com.apple.FinalCut) or by the number in the App Store link (id424389933)
+  async appstore(src) {
+    const ref = src.ref.trim(), m = ref.match(/id(\d{6,})/) || ref.match(/^(\d{6,})$/);
+    const url = `https://itunes.apple.com/lookup?${m ? 'id=' + m[1] : 'bundleId=' + encodeURIComponent(ref)}&country=${process.env.ARCA_COUNTRY || 'be'}&entity=macSoftware`;
+    const j = JSON.parse(await getText(url));
+    const r = (j.results || [])[0];
+    if (!r) return null;
+    return { version: r.version, date: day(r.currentVersionReleaseDate), notes: r.releaseNotes || '', url: r.trackViewUrl || '', min_os: r.minimumOsVersion || '' };
+  },
+  // Sparkle appcast: the update feed most Mac apps outside the App Store use (SUFeedURL in Info.plist)
+  async sparkle(src) {
+    const xml = await getText(src.ref, 'application/rss+xml, application/xml, text/xml');
+    const items = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map(([it]) => {
+      const pick = (re) => (it.match(re) || [])[1] || '';
+      const version = pick(/sparkle:shortVersionString="([^"]+)"/) || pick(/<sparkle:shortVersionString>([^<]+)</) || pick(/sparkle:version="([^"]+)"/) || pick(/<sparkle:version>([^<]+)</) || pick(/<title>[^<]*?(\d+(?:\.\d+)+)[^<]*<\/title>/);
+      const desc = pick(/<description>([\s\S]*?)<\/description>/).replace(/^<!\[CDATA\[|\]\]>$/g, '');
+      return { version: version.trim(), date: day(pick(/<pubDate>([^<]+)</)), notes: stripTags(desc), url: pick(/<sparkle:releaseNotesLink[^>]*>([^<]+)</) || pick(/<link>([^<]+)</), min_os: pick(/<sparkle:minimumSystemVersion>([^<]+)</) };
+    });
+    return newest(items);
+  },
+  async github(src) {
+    const repo = src.ref.replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, '').split('/').slice(0, 2).join('/');
+    const j = JSON.parse(await getText(`https://api.github.com/repos/${repo}/releases/latest`, 'application/vnd.github+json'));
+    return { version: String(j.tag_name || j.name || '').replace(/^[^\d]*/, ''), date: day(j.published_at), notes: j.body || '', url: j.html_url || '', min_os: '' };
+  },
+  // Any page: the pattern's first group is the version number; the highest version on the page wins
+  async page(src) {
+    let re; try { re = new RegExp(src.pattern, 'gi'); } catch { throw new Error('The version pattern is not a valid regular expression'); }
+    const text = htmlToText(await getText(src.ref));
+    const found = [...text.matchAll(re)].map(m => ({ version: (m[1] || m[0]).trim(), date: '', notes: '', url: '', min_os: '' }));
+    if (!found.length) throw new Error('The page loaded, but no version matching the pattern was found');
+    return newest(found);
+  },
+};
+async function checkUpdateSource(appId) {
+  const src = q('SELECT * FROM update_sources WHERE app_id = ?').get(appId);
+  if (!src) throw Object.assign(new Error('No version check set up'), { status: 404 });
+  const app = q('SELECT * FROM apps WHERE id = ?').get(appId);
+  const have = hydrateApp(app).latest;
+  const save = (status, message, f = null) => {
+    q('UPDATE update_sources SET last_checked = ?, last_status = ?, last_message = ? WHERE app_id = ?').run(now(), status, message, appId);
+    if (f) q('UPDATE update_sources SET latest_version = ?, latest_date = ?, latest_notes = ?, latest_url = ?, latest_min_os = ? WHERE app_id = ?')
+      .run(f.version, f.date || '', String(f.notes || '').slice(0, 6000), f.url || '', f.min_os || '', appId);
+    return { status, message, ...hydrateApp(app).update };
+  };
+  let f;
+  try { f = await (LOOKUPS[src.type] || LOOKUPS.page)(src); }
+  catch (e) { return save('error', e.name === 'TimeoutError' ? 'The page took too long to answer' : e.cause?.code ? `Could not reach the page (${e.cause.code})` : e.message); }
+  if (!f?.version) return save('error', src.type === 'appstore' ? 'The App Store has no Mac app with that bundle ID or link in this country' : 'No version number found');
+  const newer = !have || (cmpVer(f.version, have) ?? 0) > 0;
+  return save(newer ? 'new' : 'ok', newer ? `Version ${f.version} is available${have ? ` (you have ${have})` : ''}.` : `Up to date: ${f.version} is the newest version.`, f);
+}
+const UPD_FIELDS = ['type', 'ref', 'pattern', 'download_url', 'enabled'];
+app.put('/api/apps/:id/update-source', wrap(async (req, res) => {
+  const a = need(q('SELECT id FROM apps WHERE id = ?').get(req.params.id), 'App');
+  const b = pick(req.body || {}, UPD_FIELDS);
+  if (!LOOKUPS[b.type]) return res.status(400).json({ error: 'Choose where Arca should look for new versions' });
+  if (!String(b.ref || '').trim()) return res.status(400).json({ error: b.type === 'appstore' ? 'Enter the bundle ID or the App Store link' : b.type === 'github' ? 'Enter the GitHub repository, for example owner/name' : 'Enter the web address' });
+  if (b.type === 'sparkle' || b.type === 'page') { try { if (!/^https?:$/.test(new URL(b.ref).protocol)) throw 0; } catch { return res.status(400).json({ error: 'Enter the full web address, starting with https://' }); } }
+  if (b.type === 'page') { try { if (!b.pattern) throw 0; new RegExp(b.pattern); } catch { return res.status(400).json({ error: 'The version pattern is missing or not a valid regular expression' }); } }
+  q(`INSERT INTO update_sources (app_id,type,ref,pattern,download_url,enabled) VALUES (:app,:type,:ref,:pattern,:download_url,:enabled)
+     ON CONFLICT(app_id) DO UPDATE SET type=excluded.type, ref=excluded.ref, pattern=excluded.pattern, download_url=excluded.download_url, enabled=excluded.enabled,
+       latest_version = CASE WHEN update_sources.type = excluded.type AND update_sources.ref = excluded.ref THEN update_sources.latest_version ELSE '' END`)
+    .run({ app: a.id, type: b.type, ref: String(b.ref).trim(), pattern: b.pattern || '', download_url: b.download_url || '', enabled: b.enabled === false || b.enabled === 0 ? 0 : 1 });
+  res.json(await checkUpdateSource(a.id));
+}));
+app.post('/api/apps/:id/update-source/check', wrap(async (req, res) => res.json(await checkUpdateSource(req.params.id))));
+app.post('/api/apps/:id/update-source/dismiss', (req, res) => {
+  q('UPDATE update_sources SET dismissed_version = latest_version WHERE app_id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+app.delete('/api/apps/:id/update-source', (req, res) => { q('DELETE FROM update_sources WHERE app_id = ?').run(req.params.id); res.json({ ok: true }); });
+// check all enabled sources two minutes after start and then every 12 hours, one at a time
+async function checkAllUpdates() {
+  for (const s of q('SELECT app_id FROM update_sources WHERE enabled = 1').all()) { try { await checkUpdateSource(s.app_id); } catch {} await new Promise(r => setTimeout(r, 1500)); }
+}
+setTimeout(checkAllUpdates, 120_000).unref();
+setInterval(checkAllUpdates, 12 * 3600_000).unref();
 
 // ---------- automatic key checks (e.g. the MakeMKV beta key page) ----------
 const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];

@@ -48,6 +48,17 @@ on inspectApp(theApp)
 	if appBuild is not "" and appBuild is not appVersion then set appVersion to appVersion & "  (build " & appBuild & ")"
 	set bundleID to readKey(plist, "CFBundleIdentifier")
 
+	-- Where the app gets its updates: the Mac App Store (it has a store receipt) or a Sparkle feed
+	set updateSource to ""
+	try
+		do shell script "test -e " & quoted form of (appPath & "/Contents/_MASReceipt/receipt")
+		set updateSource to "Mac App Store"
+	end try
+	if updateSource is "" then
+		set feed to readKey(plist, "SUFeedURL")
+		if feed is not "" then set updateSource to feed
+	end if
+
 	-- Minimum macOS
 	set minOS to readKey(plist, "LSMinimumSystemVersion")
 	if minOS is "" then
@@ -111,6 +122,7 @@ on inspectApp(theApp)
 	set report to report & "Architecture:  " & arch & archDetail & return
 	set report to report & "Last macOS:  " & lastOS & return
 	if bundleID is not "" then set report to report & "Bundle ID:  " & bundleID & return
+	if updateSource is not "" then set report to report & "Updates:  " & updateSource & return
 	return report
 end inspectApp
 

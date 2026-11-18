@@ -242,6 +242,17 @@ aside > .panel + .panel { margin-top: 20px; }
 .ksrc-st { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ksrc-acts { display: flex; gap: 12px; align-items: center; }
 .ksrc > .link { text-align: left; font-size: 13px; }
+.pill.upd { background: var(--accent); color: #fff; }
+.upd-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; }
+.nav.on .upd-dot { background: #fff; }
+.upd-panel.avail { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--accent); }
+.upd-new { display: grid; gap: 2px; }
+.upd-new b { font-size: 15px; }
+.upd-notes { margin-top: 10px; font-size: 13px; }
+.upd-notes summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.upd-notes p { white-space: pre-wrap; margin: 8px 0 0; color: var(--ink); max-height: 220px; overflow-y: auto; }
+.upd-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+a.btn { text-decoration: none; }
 .klist { display: grid; gap: 10px; }
 .krow { display: grid; grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center; background: var(--card); box-shadow: var(--shadow); border-radius: var(--r-md); padding: 12px 14px; }
 .krow .ic { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; cursor: pointer; }
@@ -577,6 +588,9 @@ const Demo = (() => {
   const mkv = addApp({ name: 'MakeMKV', developer: 'GuinpinSoft', category: 'Video', platform: 'macOS', age: 0.2, description: 'Free while in beta; the beta key changes every month or two.' }, [
     { version: '1.18.2', arch: 'Universal', min_os: '10.13', files: [['makemkv_v1.18.2_osx.dmg', 42 * MB, 'disk-image']] },
   ], betaKeys);
+  // MakeMKV's real latest release; the vault only has 1.18.2, so the example shows an update
+  const updSources = { [mkv.id]: { app_id: mkv.id, type: 'page', ref: 'https://www.makemkv.com/download/history.html', pattern: 'MakeMKV v(\\d+(?:\\.\\d+)+)', download_url: 'https://www.makemkv.com/download/', enabled: 1,
+    last_checked: new Date(Date.now() - 3.1 * 3600e3).toISOString(), last_status: 'new', last_message: 'Version 2.0.0 is available (you have 1.18.2).', latest_version: '2.0.0', latest_date: '2026-09-20', latest_notes: 'Version bump with almost no functional changes.\nSmall improvements and bug fixes.', latest_url: '', latest_min_os: '', dismissed_version: '' } };
   const keySources = { [mkv.id]: { app_id: mkv.id, ...KEY_PRESETS.makemkv, enabled: 1, last_checked: new Date(Date.now() - 2.4 * 3600e3).toISOString(), last_status: 'ok', last_message: `No new key. The current one is valid until ${betaKeys[4].valid_until}.` } };
 
   const ksp = addApp({ name: 'Kerbal Space Program', developer: 'Squad', category: 'Games', platform: 'macOS', age: 0.3, description: 'DRM-free copies from the Private Division store.' }, [
@@ -615,7 +629,9 @@ const Demo = (() => {
   function hydrate(a, full) {
     const vs = versions.filter(v => v.app_id === a.id).sort((x, y) => (cmpVer(y.version, x.version) ?? 0));
     const fs = files.filter(f => f.app_id === a.id);
-    const o = { parent_id: '', ...a, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
+    const o = { parent_id: '', ...a, update: null, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
+    const us = updSources[a.id];
+    if (us) o.update = { ...us, have: o.latest, available: !!us.latest_version && (cmpVer(us.latest_version, o.latest) ?? 0) > 0 && us.latest_version !== us.dismissed_version };
     if (full) {
       o.versions = vs.map(v => ({ includes: '', ...v, files: fs.filter(f => f.version_id === v.id) })); o.licenses = licenses.filter(l => l.app_id === a.id).sort((x, y) => (y.valid_from || y.created_at).localeCompare(x.valid_from || x.created_at)).map(({ key, ...l }) => l); o.key_source = keySources[a.id] || null;
       o.addons = apps.filter(x => x.parent_id === a.id).sort((x, y) => x.name.localeCompare(y.name)).map(x => hydrate(x));
@@ -636,7 +652,8 @@ const Demo = (() => {
     if (M('GET', /^stats$/)) {
       const recent = versions.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6).map(v => { const a = appById(v.app_id); return { id: v.id, version: v.version, created_at: v.created_at, app_id: a.id, name: a.name, icon: a.icon, category: a.category }; });
       const cats = {}; apps.forEach(a => cats[a.category] = (cats[a.category] || 0) + 1);
-      return { apps: apps.length, versions: versions.length, files: files.length, licenses: licenses.length, devices: devices.length, size: files.reduce((s, f) => s + f.size, 0), bad: 0, verified: files.filter(f => f.verify_status === 'ok').length, last_verify: job.finished_at, disk: { total: 8 * 1024 * GB, free: 5.3 * 1024 * GB }, recent, categories: Object.entries(cats).map(([category, n]) => ({ category, n })), verify: job };
+      const updates = apps.map(a => hydrate(a)).filter(a => a.update?.available).map(a => ({ id: a.id, name: a.name, icon: a.icon, category: a.category, have: a.latest, latest: a.update.latest_version, date: a.update.latest_date }));
+      return { updates, apps: apps.length, versions: versions.length, files: files.length, licenses: licenses.length, devices: devices.length, size: files.reduce((s, f) => s + f.size, 0), bad: 0, verified: files.filter(f => f.verify_status === 'ok').length, last_verify: job.finished_at, disk: { total: 8 * 1024 * GB, free: 5.3 * 1024 * GB }, recent, categories: Object.entries(cats).map(([category, n]) => ({ category, n })), verify: job };
     }
     if (M('GET', /^apps$/)) {
       let r = apps.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -658,6 +675,10 @@ const Demo = (() => {
     if (M('GET', /^licenses$/)) return licenses.map(licOut).sort((a, b) => a.app_name.localeCompare(b.app_name));
     if (M('POST', /^apps\/[^/]+\/licenses$/)) { if (!body.key?.trim()) err('License key is required'); const l = { id: id(), app_id: seg[1], label: '', registered_to: '', email: '', purchased: '', source: '', notes: '', ...pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes', 'valid_from', 'valid_until']), key: body.key.trim(), created_at: t(0) }; l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); licenses.push(l); return licOut(l); }
     if (M('PUT', /^licenses\/[^/]+$/)) { const l = licenses.find(x => x.id === seg[1]); Object.assign(l, pickF(body, ['label', 'registered_to', 'email', 'purchased', 'source', 'notes', 'valid_from', 'valid_until'])); if (body.key?.trim()) { l.key = body.key.trim(); l.key_mask = '•••• •••• •••• ' + l.key.replace(/[\s-]/g, '').slice(-4); } return licOut(l); }
+    if (M('PUT', /^apps\/[^/]+\/update-source$/)) { if (!body.ref?.trim()) err('Enter the address'); updSources[seg[1]] = { app_id: seg[1], ...pickF(body, ['type', 'ref', 'pattern', 'download_url']), enabled: body.enabled ? 1 : 0, last_checked: new Date().toISOString(), last_status: 'ok', last_message: 'Example data: the real check runs on your NAS.', latest_version: '', latest_date: '', latest_notes: '', latest_url: '', latest_min_os: '', dismissed_version: '' }; return { status: 'ok', message: updSources[seg[1]].last_message }; }
+    if (M('POST', /^apps\/[^/]+\/update-source\/check$/)) { const u = updSources[seg[1]]; u.last_checked = new Date().toISOString(); return { status: u.last_status, message: u.last_message + ' (Example data.)' }; }
+    if (M('POST', /^apps\/[^/]+\/update-source\/dismiss$/)) { const u = updSources[seg[1]]; u.dismissed_version = u.latest_version; u.last_status = 'ok'; return { ok: true }; }
+    if (M('DELETE', /^apps\/[^/]+\/update-source$/)) { delete updSources[seg[1]]; return { ok: true }; }
     if (M('PUT', /^apps\/[^/]+\/key-source$/)) { if (!/^https?:\/\//.test(body.url || '')) err('Enter the full web address of the page, starting with https://'); keySources[seg[1]] = { app_id: seg[1], ...pickF(body, ['url', 'pattern', 'until_pattern', 'label']), enabled: body.enabled ? 1 : 0, last_checked: new Date().toISOString(), last_status: 'ok', last_message: 'Example data: a real check runs once Arca is on your NAS.' }; return { status: 'ok', message: keySources[seg[1]].last_message }; }
     if (M('POST', /^apps\/[^/]+\/key-source\/check$/)) { const k = keySources[seg[1]]; Object.assign(k, { last_checked: new Date().toISOString(), last_status: 'ok', last_message: 'No new key. (Example data: the real check runs on your NAS.)' }); return { status: 'ok', message: k.last_message }; }
     if (M('DELETE', /^apps\/[^/]+\/key-source$/)) { delete keySources[seg[1]]; return { ok: true }; }
@@ -676,7 +697,7 @@ const Demo = (() => {
       if (!job.running) { job = { running: true, done: 0, total: files.length, bad: [], started_at: t(0), finished_at: '' }; const tick = setInterval(() => { job.done = Math.min(job.total, job.done + 2); if (job.done >= job.total) { job.running = false; job.finished_at = new Date().toISOString(); files.forEach(f => f.verified_at = job.finished_at); clearInterval(tick); } }, 220); }
       return job;
     }
-    if (M('GET', /^settings$/)) return { build: { commit: 'example', date: '' }, version: '1.3.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
+    if (M('GET', /^settings$/)) return { build: { commit: 'example', date: '' }, version: '1.4.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
     err('Not available in the demo');
   }
   async function upload(url, form, onProgress) {
@@ -734,7 +755,7 @@ function shell() {
 async function refreshChrome() {
   try {
     const s = await api('GET', 'api/stats'); S.stats = s;
-    $('#badge-library').textContent = s.apps || '';
+    $('#badge-library').innerHTML = (s.updates?.length ? `<i class="upd-dot" title="${s.updates.length} update${s.updates.length === 1 ? '' : 's'} available"></i>` : '') + (s.apps || '');
     $('#badge-keys').textContent = s.licenses || '';
     $('#badge-devices').textContent = s.devices || '';
     const used = s.disk ? s.disk.total - s.disk.free : 0;
@@ -772,7 +793,7 @@ function appCard(a) {
   return `<article class="card" data-act="open-app" data-id="${a.id}" tabindex="0">
     <div class="art">${iconHTML(a, 'card')}</div>
     <h4>${esc(a.name)}</h4>
-    <div class="meta"><span>${a.parent_id ? 'Add-on' : esc(a.category)}${a.addon_count ? ` · +${a.addon_count} add-on${a.addon_count === 1 ? '' : 's'}` : ''}</span>${a.latest ? `<span class="pill num">v${esc(a.latest)}</span>` : `<span class="pill grey">No files yet</span>`}</div>
+    <div class="meta"><span>${a.parent_id ? 'Add-on' : esc(a.category)}${a.addon_count ? ` · +${a.addon_count} add-on${a.addon_count === 1 ? '' : 's'}` : ''}</span>${a.update?.available ? `<span class="pill upd num" title="You have ${esc(a.latest)}">${esc(a.update.latest_version)} out</span>` : a.latest ? `<span class="pill num">v${esc(a.latest)}</span>` : `<span class="pill grey">No files yet</span>`}</div>
   </article>`;
 }
 function heroArt(a) {
@@ -808,6 +829,10 @@ const Views = {
         </section>
       </div>
       <aside class="ov-rail">
+        ${s.updates?.length ? `<div class="panel upd-panel avail">
+          <div class="panel-h"><h3>Updates available</h3></div>
+          ${s.updates.map(u => `<div class="lrow" data-act="open-app" data-id="${u.id}" tabindex="0"><div class="ic">${iconHTML(u)}</div><div class="tx"><b>${esc(u.name)}</b><span class="num">You have ${esc(u.have || '—')}${u.date ? ` · ${esc(fmtDate(u.date))}` : ''}</span></div><span class="pill upd num">${esc(u.latest)}</span></div>`).join('')}
+        </div>` : ''}
         <div class="panel">
           <div class="panel-h"><h3>Latest versions</h3><button class="link" data-act="go" data-v="library">Show all</button></div>
           ${(s.recent || []).slice(0, 5).map(r => `<div class="lrow" data-act="open-app" data-id="${r.app_id}"><div class="ic">${iconHTML(r)}</div><div class="tx"><b>${esc(r.name)}</b><span>${esc(r.category)} · ${ago(r.created_at)}</span></div><span class="pill num">v${esc(r.version)}</span></div>`).join('') || '<p class="hint">Versions you add show up here.</p>'}
@@ -855,7 +880,7 @@ const Views = {
           <h2>${esc(a.name)}</h2>
           <div class="sub">${esc(a.developer || 'Unknown developer')}</div>
           ${a.parent ? `<button class="parent-link" data-act="open-app" data-id="${a.parent.id}">${ic('package', 'i" style="width:14px;height:14px')} Add-on for <b>${esc(a.parent.name)}</b></button>` : ''}
-          <div class="chips"><span class="pill">${esc(a.category)}</span><span class="pill grey">${esc(a.platform)}</span><span class="pill grey num">${a.version_count} version${a.version_count === 1 ? '' : 's'}</span><span class="pill grey num">${fmtSize(a.total_size)}</span></div>
+          <div class="chips">${a.update?.available ? `<span class="pill upd">${esc(a.update.latest_version)} available</span>` : ''}<span class="pill">${esc(a.category)}</span><span class="pill grey">${esc(a.platform)}</span><span class="pill grey num">${a.version_count} version${a.version_count === 1 ? '' : 's'}</span><span class="pill grey num">${fmtSize(a.total_size)}</span></div>
         </div>
         <div class="dactions">
           ${latestFile ? `<button class="btn" data-act="download" data-id="${latestFile.id}">${ic('download')} Get ${esc(a.latest)}</button>` : ''}
@@ -874,6 +899,7 @@ const Views = {
           </div>`}
         </section>
         <aside>
+          ${updatePanel(a)}
           ${bootablePanel(a)}
           ${licensePanel(a)}
           ${devs.length && a.category !== 'Operating Systems' ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
@@ -1178,7 +1204,10 @@ async function appModal(existing, preset = {}) {
       for (const [slot, file] of [['icon', icon]]) if (file) { const fd = new FormData(); fd.append('file', file); await uploadForm(`api/apps/${a.id}/${slot}`, fd); }
       closeModal(); refreshChrome();
       if (existing) { toast('Saved'); render(); }
-      else { toast(`${a.name} added`); go('app', { id: a.id }); setTimeout(() => versionModal(), 250); }
+      else {
+        if (S.pendingSource) { try { await api('PUT', `api/apps/${a.id}/update-source`, S.pendingSource); } catch {} S.pendingSource = null; }
+        toast(`${a.name} added`); go('app', { id: a.id }); setTimeout(() => versionModal(), 250);
+      }
     },
   });
 }
@@ -1201,6 +1230,8 @@ function versionModal(existing) {
     submit: existing ? 'Save' : 'Add & upload files',
     onSubmit: async (d) => {
       const v = existing ? await api('PUT', 'api/versions/' + existing.id, d) : await api('POST', `api/apps/${a.id}/versions`, d);
+      if (S.pendingSource && !a.update) { try { await api('PUT', `api/apps/${a.id}/update-source`, S.pendingSource); } catch {} }
+      S.pendingSource = null;
       closeModal(); refreshChrome(); await render();
       if (!existing) uploadModal(v.id);
     },
@@ -1326,6 +1357,72 @@ function keyModal(existing) {
     },
   });
 }
+/* ============ new-version checks ============ */
+const UPD_TYPES = {
+  appstore: { label: 'Mac App Store', ref: 'Bundle ID or App Store link', ph: 'com.apple.FinalCut', hint: 'Apple’s public App Store lookup. Works for anything bought in the Mac App Store.' },
+  sparkle: { label: 'Update feed (Sparkle)', ref: 'Feed address', ph: 'https://example.com/appcast.xml', hint: 'The feed many Mac apps use to update themselves. App Info shows it as “Updates: https://…”.' },
+  github: { label: 'GitHub releases', ref: 'Repository', ph: 'owner/name or https://github.com/owner/name', hint: 'The newest published release of an open-source project.' },
+  page: { label: 'A web page', ref: 'Page that shows the version', ph: 'https://www.makemkv.com/download/history.html', hint: 'Arca reads the page and takes the highest version number the pattern finds.' },
+};
+const UPD_PRESETS = [
+  { match: /makemkv/i, type: 'page', ref: 'https://www.makemkv.com/download/history.html', pattern: 'MakeMKV v(\\d+(?:\\.\\d+)+)', download_url: 'https://www.makemkv.com/download/' },
+  { match: /^final cut pro$/i, type: 'appstore', ref: 'com.apple.FinalCut' },
+  { match: /^logic pro$/i, type: 'appstore', ref: 'com.apple.logic10' },
+  { match: /^xcode$/i, type: 'appstore', ref: 'com.apple.dt.Xcode' },
+];
+function guessUpdateSource(a) {
+  const p = UPD_PRESETS.find(x => x.match.test(a.name));
+  if (p) { const { match, ...rest } = p; return rest; }
+  const bid = a.versions?.map(v => (String(v.notes).match(/Bundle ID (\S+)/) || [])[1]).find(Boolean);
+  return bid ? { type: 'appstore', ref: bid } : { type: 'page' };
+}
+function updateModal() {
+  const a = S.app, src = a.update;
+  const start = src ? { type: src.type, ref: src.ref, pattern: src.pattern, download_url: src.download_url, enabled: !!src.enabled } : { ...guessUpdateSource(a), enabled: true };
+  modal({
+    title: 'Check for new versions',
+    lead: `Arca looks every 12 hours and tells you when a version newer than the one in your vault (${esc(a.latest || 'none yet')}) is out.`,
+    fields: [
+      { name: 'type', label: 'Where to look', type: 'select', full: true, options: Object.entries(UPD_TYPES).map(([k, t]) => [k, t.label]) },
+      { name: 'ref', label: 'Address', full: true, required: true },
+      { name: 'pattern', label: 'Version pattern (regular expression, first group is the version)', full: true, mono: true, ph: 'MakeMKV v(\\d+(?:\\.\\d+)+)' },
+      { name: 'download_url', label: 'Download page (optional)', full: true, ph: 'https://' },
+      { name: 'enabled', label: 'Check automatically', type: 'checkbox' },
+    ],
+    values: start,
+    body: '<p class="hint" id="updHint" style="margin:10px 0 0"></p>',
+    submit: 'Save and check',
+    danger: src ? 'Stop checking' : null,
+    onDanger: async () => { await api('DELETE', `api/apps/${a.id}/update-source`); closeModal(); toast('Version check removed'); refreshChrome(); render(); },
+    onSubmit: async (d) => { const r = await api('PUT', `api/apps/${a.id}/update-source`, d); closeModal(); toast(r.message); refreshChrome(); render(); },
+  });
+  const f = $('#modal form');
+  const sync = () => {
+    const t = UPD_TYPES[f.elements.type.value];
+    f.elements.ref.closest('.f').querySelector('label').textContent = t.ref;
+    f.elements.ref.placeholder = t.ph;
+    f.elements.pattern.closest('.f').hidden = f.elements.type.value !== 'page';
+    $('#updHint').textContent = t.hint;
+  };
+  f.elements.type.addEventListener('change', sync); sync();
+}
+function updatePanel(a) {
+  const u = a.update;
+  if (!u) return `<div class="panel upd-panel"><div class="panel-h"><h3>Updates</h3></div>
+    <button class="link" data-act="update-source" style="text-align:left">${ic('refresh', 'i" style="width:14px;height:14px;vertical-align:-2px')} Tell me when a new version comes out</button></div>`;
+  const dl = u.download_url || u.latest_url || a.website;
+  const notes = String(u.latest_notes || '').trim();
+  return `<div class="panel upd-panel ${u.available ? 'avail' : ''}">
+    <div class="panel-h"><h3>Updates</h3><button class="link" data-act="update-source">Settings</button></div>
+    ${u.available ? `<div class="upd-new"><b>Version ${esc(u.latest_version)} is available</b><span class="hint">You have ${esc(u.have || 'no version')}${u.latest_date ? ` · released ${esc(fmtDate(u.latest_date))}` : ''}</span>
+        ${u.latest_min_os ? `<span class="hint">Needs ${esc(a.platform)} ${esc(u.latest_min_os)} or later</span>` : ''}</div>
+      ${notes ? `<details class="upd-notes"><summary>What's new</summary><p>${esc(notes.slice(0, 1500))}${notes.length > 1500 ? '…' : ''}</p></details>` : ''}
+      <div class="upd-acts">${dl ? `<a class="btn sm" href="${esc(dl)}" target="_blank" rel="noopener">${ic('download')}<span>Get ${esc(u.latest_version)}</span></a>` : ''}<button class="btn ghost sm" data-act="dismiss-update">Skip this version</button></div>`
+    : u.last_status === 'error' ? `<div class="ksrc-st"><span class="pill bad">Problem</span><span class="hint">${esc(u.last_message)}</span></div>`
+    : `<div class="ksrc-st"><span class="pill good">Up to date</span><span class="hint">${u.latest_version ? `Newest is ${esc(u.latest_version)}` : 'Not checked yet'}${u.dismissed_version && u.dismissed_version === u.latest_version ? ' (skipped)' : ''}</span></div>`}
+    <div class="ksrc-acts" style="margin-top:10px"><button class="btn soft sm" data-act="check-update">${ic('refresh')}<span>Check now</span></button><span class="hint">${esc(UPD_TYPES[u.type]?.label || '')}${u.last_checked ? ` · ${ago(u.last_checked)}` : ''}</span></div>
+  </div>`;
+}
 function keySourceModal() {
   const a = S.app, ks = a.key_source;
   const guess = /makemkv/i.test(a.name) ? KEY_PRESETS.makemkv : {};
@@ -1418,10 +1515,16 @@ function parseAppInfo(text) {
     max_os: num(line('Last macOS')),
     arch,
     bundle_id: bundle,
+    updates: line('Updates'),
   };
 }
 function versionFromInfo(info) {
   return { version: info.version, min_os: info.min_os, max_os: info.max_os, arch: info.arch, notes: [info.build && `Build ${info.build}`, info.bundle_id && `Bundle ID ${info.bundle_id}`].filter(Boolean).join('\n') };
+}
+function sourceFromInfo(info) {
+  if (/^mac app store$/i.test(info.updates) && info.bundle_id) return { type: 'appstore', ref: info.bundle_id, enabled: true };
+  if (/^https?:\/\//.test(info.updates)) return { type: 'sparkle', ref: info.updates, enabled: true };
+  return null;
 }
 function takePendingVersion() { const v = S.pendingVersion || {}; S.pendingVersion = null; return v; }
 function fillForm(form, values) {
@@ -1440,7 +1543,7 @@ document.addEventListener('paste', async (e) => {
   if (!form) {
     if (e.target.closest?.('input,textarea')) return;
     e.preventDefault();
-    S.pendingVersion = versionFromInfo(info);
+    S.pendingVersion = versionFromInfo(info); S.pendingSource = sourceFromInfo(info);
     await appModal();
     fillForm($('#modal form'), { name: info.name, developer: info.developer, platform: 'macOS' });
     toast(`Filled in from App Info. Add ${info.name}, then the version follows.`);
@@ -1452,7 +1555,7 @@ document.addEventListener('paste', async (e) => {
     if (form.elements.notes && !form.elements.notes.value) form.elements.notes.value = versionFromInfo(info).notes;
   } else if (form.elements.name && form.elements.category) {
     fillForm(form, { name: info.name, developer: form.elements.developer.value ? '' : info.developer, platform: 'macOS' });
-    S.pendingVersion = versionFromInfo(info);
+    S.pendingVersion = versionFromInfo(info); S.pendingSource = sourceFromInfo(info);
   } else return;
   toast('Filled in from App Info');
 });
@@ -1479,6 +1582,9 @@ document.addEventListener('click', async (e) => {
       case 'download': download(id); break;
       case 'new-key': keyModal(); break;
       case 'key-source': keySourceModal(); break;
+      case 'update-source': updateModal(); break;
+      case 'check-update': { el.disabled = true; const r = await api('POST', `api/apps/${S.app.id}/update-source/check`); toast(r.message); refreshChrome(); render(); break; }
+      case 'dismiss-update': await api('POST', `api/apps/${S.app.id}/update-source/dismiss`); toast('Skipped. Arca tells you again when a newer version appears.'); refreshChrome(); render(); break;
       case 'toggle-expired': S.showExpired = !S.showExpired; render(); break;
       case 'check-keys': { el.disabled = true; const r = await api('POST', `api/apps/${S.app.id}/key-source/check`); toast(r.message); refreshChrome(); render(); break; }
       case 'edit-key': keyModal(S.app.licenses.find(l => l.id === id)); break;
