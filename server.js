@@ -13,7 +13,7 @@ const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 // Set by the GitHub build: short commit and build date, so Settings shows exactly which update is running
 const BUILD = { commit: process.env.ARCA_COMMIT || '', date: process.env.ARCA_BUILD_DATE || '' };
 const PORT = Number(process.env.PORT || 8080);
@@ -109,6 +109,8 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 // migrations for databases created by earlier versions
 if (!db.prepare("SELECT 1 FROM pragma_table_info('apps') WHERE name = 'parent_id'").get()) db.exec("ALTER TABLE apps ADD COLUMN parent_id TEXT DEFAULT ''");
 if (!db.prepare("SELECT 1 FROM pragma_table_info('versions') WHERE name = 'includes'").get()) db.exec("ALTER TABLE versions ADD COLUMN includes TEXT DEFAULT ''");
+// status: '' = in the vault, 'never' = never released by the developer, 'wanted' = exists but not found yet
+if (!db.prepare("SELECT 1 FROM pragma_table_info('versions') WHERE name = 'status'").get()) db.exec("ALTER TABLE versions ADD COLUMN status TEXT DEFAULT ''");
 for (const col of ['valid_from', 'valid_until', 'found_at']) if (!db.prepare("SELECT 1 FROM pragma_table_info('licenses') WHERE name = ?").get(col)) db.exec(`ALTER TABLE licenses ADD COLUMN ${col} TEXT DEFAULT ''`);
 db.exec(`CREATE TABLE IF NOT EXISTS update_sources (
   app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, type TEXT NOT NULL, ref TEXT NOT NULL, pattern TEXT DEFAULT '',
@@ -213,8 +215,10 @@ function hydrateApp(app, { full = false } = {}) {
   const files = q('SELECT * FROM files WHERE app_id = ? ORDER BY uploaded_at').all(app.id);
   const out = {
     ...app,
-    latest: versions[0]?.version || '',
-    version_count: versions.length,
+    // only versions that are really in the vault count as "latest" and in the totals
+    latest: versions.find(v => !v.status)?.version || '',
+    version_count: versions.filter(v => !v.status).length,
+    gap_count: versions.filter(v => v.status).length,
     file_count: files.length,
     total_size: files.reduce((s, f) => s + f.size, 0),
     license_count: q('SELECT COUNT(*) n FROM licenses WHERE app_id = ?').get(app.id).n,
@@ -246,7 +250,7 @@ function writeSidecar(appId) {
     name: app.name, developer: app.developer, category: app.category, platform: app.platform,
     description: app.description, website: app.website,
     versions: full.versions.map(v => ({
-      version: v.version, released: v.released, min_os: v.min_os, max_os: v.max_os, arch: v.arch, notes: v.notes, includes: v.includes,
+      version: v.version, ...(v.status ? { status: v.status === 'never' ? 'never released' : 'still looking' } : {}), released: v.released, min_os: v.min_os, max_os: v.max_os, arch: v.arch, notes: v.notes, includes: v.includes,
       files: v.files.map(f => ({ name: f.original_name, path: f.rel_path, kind: f.kind, size: f.size, sha256: f.sha256 })),
     })),
   };
@@ -407,7 +411,8 @@ app.post('/api/apps/:id/:slot(icon|banner)', (req, res, next) => {
 app.use('/media', express.static(MEDIA_DIR, { maxAge: '7d', fallthrough: false }));
 
 // versions
-const VER_FIELDS = ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes'];
+const VER_FIELDS = ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes', 'status'];
+const cleanStatus = (x) => ['never', 'wanted'].includes(x) ? x : '';
 app.post('/api/apps/:id/versions', (req, res) => {
   const a = need(q('SELECT * FROM apps WHERE id = ?').get(req.params.id), 'App');
   const b = pick(req.body || {}, VER_FIELDS);
@@ -415,9 +420,10 @@ app.post('/api/apps/:id/versions', (req, res) => {
   const rule = a.platform === 'macOS' ? MAC_ARCH_RULES[b.arch] : null;
   if (rule) { if (!b.min_os && rule.min_os) b.min_os = rule.min_os; if (!b.max_os && rule.max_os) b.max_os = rule.max_os; }
   const id = uid();
-  q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,includes,created_at)
-     VALUES (:id,:app,:version,:released,:min_os,:max_os,:arch,:notes,:includes,:t)`).run({
-    id, app: a.id, version: b.version.trim(), released: b.released || '', min_os: b.min_os || '', max_os: b.max_os || '', arch: b.arch || '', notes: b.notes || '', includes: b.includes || '', t: now(),
+  if (q('SELECT 1 FROM versions WHERE app_id = ? AND version = ?').get(a.id, b.version.trim())) return res.status(409).json({ error: `Version ${b.version.trim()} is already listed` });
+  q(`INSERT INTO versions (id,app_id,version,released,min_os,max_os,arch,notes,includes,status,created_at)
+     VALUES (:id,:app,:version,:released,:min_os,:max_os,:arch,:notes,:includes,:status,:t)`).run({
+    id, app: a.id, version: b.version.trim(), released: b.released || '', min_os: b.min_os || '', max_os: b.max_os || '', arch: b.arch || '', notes: b.notes || '', includes: b.includes || '', status: cleanStatus(b.status), t: now(),
   });
   q('UPDATE apps SET updated_at = ? WHERE id = ?').run(now(), a.id);
   writeSidecar(a.id);
@@ -426,7 +432,7 @@ app.post('/api/apps/:id/versions', (req, res) => {
 app.put('/api/versions/:id', (req, res) => {
   const v = need(q('SELECT * FROM versions WHERE id = ?').get(req.params.id), 'Version');
   const b = { ...v, ...pick(req.body || {}, VER_FIELDS) };
-  q('UPDATE versions SET version=:version, released=:released, min_os=:min_os, max_os=:max_os, arch=:arch, notes=:notes, includes=:includes WHERE id=:id').run({ ...pick(b, VER_FIELDS), id: v.id });
+  q('UPDATE versions SET version=:version, released=:released, min_os=:min_os, max_os=:max_os, arch=:arch, notes=:notes, includes=:includes, status=:status WHERE id=:id').run({ ...pick(b, VER_FIELDS), status: cleanStatus(b.status), id: v.id });
   writeSidecar(v.app_id);
   res.json(q('SELECT * FROM versions WHERE id = ?').get(v.id));
 });
@@ -569,7 +575,7 @@ app.get('/api/devices/:id/compatible', (req, res) => {
   const d = need(q('SELECT * FROM devices WHERE id = ?').get(req.params.id), 'Device');
   const out = q("SELECT * FROM apps WHERE category <> 'Operating Systems' ORDER BY name COLLATE NOCASE").all().map(a => {
     const h = hydrateApp(a, { full: true });
-    const versions = h.versions.map(v => ({ id: v.id, version: v.version, min_os: v.min_os, max_os: v.max_os, file_count: v.files.length, compat: compat(v, a, d) }));
+    const versions = h.versions.filter(v => !v.status).map(v => ({ id: v.id, version: v.version, min_os: v.min_os, max_os: v.max_os, file_count: v.files.length, compat: compat(v, a, d) }));
     const best = versions.find(v => v.compat === 'yes');
     return { id: a.id, name: a.name, icon: a.icon, category: a.category, platform: a.platform, best: best?.version || '', status: best ? 'yes' : versions.some(v => v.compat === 'unknown') ? 'unknown' : 'no', versions };
   }).filter(a => a.platform === d.platform);

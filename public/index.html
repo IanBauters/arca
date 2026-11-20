@@ -253,6 +253,11 @@ aside > .panel + .panel { margin-top: 20px; }
 .upd-notes p { white-space: pre-wrap; margin: 8px 0 0; color: var(--ink); max-height: 220px; overflow-y: auto; }
 .upd-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 a.btn { text-decoration: none; }
+.ver.gap { padding: 12px 20px; box-shadow: none; background: transparent; border: 1.5px dashed var(--line); }
+.ver.gap h4 { font-size: 15px; color: var(--muted); }
+.ver.gap.wanted { border-color: var(--warn-soft); }
+.gap-note { min-width: 0; flex: 1 1 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ver + .ver.gap, .ver.gap + .ver { margin-top: 12px; }
 .klist { display: grid; gap: 10px; }
 .krow { display: grid; grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center; background: var(--card); box-shadow: var(--shadow); border-radius: var(--r-md); padding: 12px 14px; }
 .krow .ic { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; cursor: pointer; }
@@ -460,7 +465,7 @@ function bootableCommand(key) {
 }
 function bootablePanel(a) {
   if (a.category !== 'Operating Systems' || a.platform !== 'macOS' || !a.versions.length) return '';
-  const key = macReleaseKey(a.versions[0].version), inst = BOOTABLE[key];
+  const key = macReleaseKey((a.versions.find(v => !v.status) || a.versions[0]).version), inst = BOOTABLE[key];
   if (!inst) return `<div class="panel"><div class="panel-h"><h3>Bootable installer</h3></div>
     <p class="hint" style="margin:0">Apple's createinstallmedia instructions cover OS X El Capitan and later. For this release, see Apple's <a href="https://support.apple.com/en-us/102662" target="_blank" rel="noopener" style="color:var(--accent)">other ways to install macOS</a>.</p></div>`;
   const cmd = bootableCommand(key);
@@ -629,7 +634,7 @@ const Demo = (() => {
   function hydrate(a, full) {
     const vs = versions.filter(v => v.app_id === a.id).sort((x, y) => (cmpVer(y.version, x.version) ?? 0));
     const fs = files.filter(f => f.app_id === a.id);
-    const o = { parent_id: '', ...a, update: null, latest: vs[0]?.version || '', version_count: vs.length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
+    const o = { parent_id: '', ...a, update: null, latest: vs.find(v => !v.status)?.version || '', version_count: vs.filter(v => !v.status).length, file_count: fs.length, total_size: fs.reduce((s, f) => s + f.size, 0), license_count: licenses.filter(l => l.app_id === a.id).length, addon_count: apps.filter(x => x.parent_id === a.id).length };
     const us = updSources[a.id];
     if (us) o.update = { ...us, have: o.latest, available: !!us.latest_version && (cmpVer(us.latest_version, o.latest) ?? 0) > 0 && us.latest_version !== us.dismissed_version };
     if (full) {
@@ -668,8 +673,8 @@ const Demo = (() => {
     if (M('GET', /^apps\/[^/]+$/)) return hydrate(appById(seg[1]) || err('App not found'), true);
     if (M('PUT', /^apps\/[^/]+$/)) { const a = appById(seg[1]); if (body.featured) apps.forEach(x => x.featured = 0); Object.assign(a, pickF(body, ['name', 'developer', 'category', 'platform', 'description', 'website', 'featured', 'parent_id']), { updated_at: t(0) }); return hydrate(a, true); }
     if (M('DELETE', /^apps\/[^/]+$/)) { const i = seg[1]; apps.forEach(x => { if (x.parent_id === i) x.parent_id = ''; }); [apps, versions, files, licenses].forEach(arr => { for (let k = arr.length - 1; k >= 0; k--) if (arr[k].id === i || arr[k].app_id === i) arr.splice(k, 1); }); return { ok: true }; }
-    if (M('POST', /^apps\/[^/]+\/versions$/)) { if (!body.version?.trim()) err('Version number is required'); const v = { id: id(), app_id: seg[1], released: '', min_os: '', max_os: '', arch: '', notes: '', ...pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes']), created_at: t(0) }; versions.push(v); appById(seg[1]).updated_at = t(0); return v; }
-    if (M('PUT', /^versions\/[^/]+$/)) { const v = versions.find(x => x.id === seg[1]); Object.assign(v, pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes'])); return v; }
+    if (M('POST', /^apps\/[^/]+\/versions$/)) { if (!body.version?.trim()) err('Version number is required'); const v = { id: id(), app_id: seg[1], released: '', min_os: '', max_os: '', arch: '', notes: '', ...pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes', 'status']), created_at: t(0) }; versions.push(v); appById(seg[1]).updated_at = t(0); return v; }
+    if (M('PUT', /^versions\/[^/]+$/)) { const v = versions.find(x => x.id === seg[1]); Object.assign(v, pickF(body, ['version', 'released', 'min_os', 'max_os', 'arch', 'notes', 'includes', 'status'])); return v; }
     if (M('DELETE', /^versions\/[^/]+$/)) { const i = seg[1]; for (let k = files.length - 1; k >= 0; k--) if (files[k].version_id === i) files.splice(k, 1); versions.splice(versions.findIndex(v => v.id === i), 1); return { ok: true }; }
     if (M('DELETE', /^files\/[^/]+$/)) { files.splice(files.findIndex(f => f.id === seg[1]), 1); return { ok: true }; }
     if (M('GET', /^licenses$/)) return licenses.map(licOut).sort((a, b) => a.app_name.localeCompare(b.app_name));
@@ -697,7 +702,7 @@ const Demo = (() => {
       if (!job.running) { job = { running: true, done: 0, total: files.length, bad: [], started_at: t(0), finished_at: '' }; const tick = setInterval(() => { job.done = Math.min(job.total, job.done + 2); if (job.done >= job.total) { job.running = false; job.finished_at = new Date().toISOString(); files.forEach(f => f.verified_at = job.finished_at); clearInterval(tick); } }, 220); }
       return job;
     }
-    if (M('GET', /^settings$/)) return { build: { commit: 'example', date: '' }, version: '1.4.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
+    if (M('GET', /^settings$/)) return { build: { commit: 'example', date: '' }, version: '1.5.0', data_dir: '/data', library_dir: '/library', auth_required: true, secret_from_env: false };
     err('Not available in the demo');
   }
   async function upload(url, form, onProgress) {
@@ -872,7 +877,7 @@ const Views = {
   async app() {
     const [a, devices] = await Promise.all([api('GET', 'api/apps/' + S.route.id), api('GET', 'api/devices')]);
     S.app = a; setTitle(a.name);
-    const latestFile = a.versions[0]?.files.find(f => f.kind === 'installer' || f.kind === 'disk-image');
+    const latestFile = a.versions.find(v => !v.status)?.files.find(f => f.kind === 'installer' || f.kind === 'disk-image');
     const devs = devices.filter(d => d.platform === a.platform);
     return `<div class="dhead">
         <div class="big">${iconHTML(a, 'lg')}</div>
@@ -880,7 +885,7 @@ const Views = {
           <h2>${esc(a.name)}</h2>
           <div class="sub">${esc(a.developer || 'Unknown developer')}</div>
           ${a.parent ? `<button class="parent-link" data-act="open-app" data-id="${a.parent.id}">${ic('package', 'i" style="width:14px;height:14px')} Add-on for <b>${esc(a.parent.name)}</b></button>` : ''}
-          <div class="chips">${a.update?.available ? `<span class="pill upd">${esc(a.update.latest_version)} available</span>` : ''}<span class="pill">${esc(a.category)}</span><span class="pill grey">${esc(a.platform)}</span><span class="pill grey num">${a.version_count} version${a.version_count === 1 ? '' : 's'}</span><span class="pill grey num">${fmtSize(a.total_size)}</span></div>
+          <div class="chips">${a.update?.available ? `<span class="pill upd">${esc(a.update.latest_version)} available</span>` : ''}<span class="pill">${esc(a.category)}</span><span class="pill grey">${esc(a.platform)}</span><span class="pill grey num">${a.version_count} version${a.version_count === 1 ? '' : 's'}</span>${a.versions?.some(v => v.status === 'wanted') ? `<span class="pill warn num">${a.versions.filter(v => v.status === 'wanted').length} to find</span>` : ''}<span class="pill grey num">${fmtSize(a.total_size)}</span></div>
         </div>
         <div class="dactions">
           ${latestFile ? `<button class="btn" data-act="download" data-id="${latestFile.id}">${ic('download')} Get ${esc(a.latest)}</button>` : ''}
@@ -902,7 +907,7 @@ const Views = {
           ${updatePanel(a)}
           ${bootablePanel(a)}
           ${licensePanel(a)}
-          ${devs.length && a.category !== 'Operating Systems' ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
+          ${devs.length && a.category !== 'Operating Systems' ? `<div class="panel"><div class="panel-h"><h3>Runs on</h3></div>${devs.map(d => { const vs = a.versions.filter(v => !v.status).map(v => ({ v, c: compat(v, a, d) })); const best = vs.find(x => x.c === 'yes'); const unk = vs.some(x => x.c === 'unknown'); return `<div class="compat"><div><b>${esc(d.name)}</b><span>${esc(a.platform)} ${esc(d.os_version)}</span></div>${best ? `<span class="pill good num">v${esc(best.v.version)}</span>` : unk ? '<span class="pill warn">Check</span>' : '<span class="pill bad">No version</span>'}</div>`; }).join('')}</div>` : ''}
           <div class="panel">
             <div class="panel-h"><h3>About</h3></div>
             ${a.description ? `<p class="about">${esc(a.description)}</p>` : '<p class="hint">No description yet.</p>'}
@@ -1026,7 +1031,23 @@ async function pollVerify() {
   else { refreshChrome(); if (box) toast(v.bad?.length ? `${v.bad.length} file(s) need attention` : `All ${v.total} files verified`); }
 }
 
+const VSTATUS = { never: 'Never released', wanted: 'Still looking for it' };
+function gapCard(v) {
+  return `<article class="ver gap ${v.status}">
+    <div class="ver-h">
+      <h4>${esc(v.version)}</h4>
+      <span class="pill ${v.status === 'wanted' ? 'warn' : 'grey'}">${VSTATUS[v.status]}</span>
+      ${v.notes ? `<span class="hint gap-note">${esc(v.notes.split('\n')[0])}</span>` : ''}
+      <span class="tools">
+        ${v.status === 'wanted' ? `<button class="ibtn" data-act="upload" data-id="${v.id}" aria-label="Upload files" title="Found it: upload the files">${ic('upload')}</button>` : ''}
+        <button class="ibtn" data-act="edit-version" data-id="${v.id}" aria-label="Edit version" title="Edit">${ic('edit')}</button>
+        <button class="ibtn" data-act="del-version" data-id="${v.id}" aria-label="Remove" title="Remove">${ic('trash')}</button>
+      </span>
+    </div>
+  </article>`;
+}
 function versionCard(v, a, devs) {
+  if (v.status) return gapCard(v);
   const range = osRange(v);
   const runs = devs.filter(d => compat(v, a, d) === 'yes');
   return `<article class="ver">
@@ -1218,7 +1239,8 @@ function versionModal(existing) {
     lead: existing ? '' : 'The OS range lets Arca tell you which version runs on each of your devices.',
     fields: [
       { name: 'version', label: 'Version', ph: '10.4.10', required: true },
-      { name: 'released', label: 'Release date', type: 'date' },
+      { name: 'status', label: 'Status', type: 'select', options: [['', 'In my vault'], ['wanted', 'Still looking for it'], ['never', 'Never released']] },
+      { name: 'released', label: 'Release date', type: 'date', full: true },
       { name: 'arch', label: 'Architecture', type: 'select', options: [...new Set([...(ARCHS[a.platform] || ARCHS.Other), existing?.arch || ''])].map(x => [x, ARCH_LABELS[x] || x]), full: true },
       { name: 'min_os', label: `Minimum ${a.platform}`, ph: a.platform === 'macOS' ? '10.14.6' : '' },
       { name: 'max_os', label: `Last ${a.platform} it runs on`, ph: a.platform === 'macOS' ? '12' : '' },
@@ -1230,6 +1252,7 @@ function versionModal(existing) {
     submit: existing ? 'Save' : 'Add & upload files',
     onSubmit: async (d) => {
       const v = existing ? await api('PUT', 'api/versions/' + existing.id, d) : await api('POST', `api/apps/${a.id}/versions`, d);
+      if (d.status) { closeModal(); toast(d.status === 'never' ? `${d.version} marked as never released` : `${d.version} is on your list to find`); refreshChrome(); await render(); return; }
       if (S.pendingSource && !a.update) { try { await api('PUT', `api/apps/${a.id}/update-source`, S.pendingSource); } catch {} }
       S.pendingSource = null;
       closeModal(); refreshChrome(); await render();
@@ -1238,6 +1261,16 @@ function versionModal(existing) {
   });
   // Choosing an architecture fills in the OS limits Apple has announced for it. Typed values are never overwritten.
   const f = $('#modal form'), note = $('#archNote');
+  // a placeholder version only needs a number and a note
+  const syncStatus = () => {
+    const st = f.elements.status.value;
+    for (const k of ['released', 'arch', 'min_os', 'max_os', 'includes']) f.elements[k].closest('.f').hidden = !!st;
+    f.querySelectorAll('.tip, .lead').forEach(x => { x.hidden = !!st; });
+    note.hidden = !!st || !note.textContent;
+    f.elements.notes.placeholder = st === 'never' ? 'How you know, e.g. "Apple went from 12 straight to 12.2"' : st === 'wanted' ? 'Where you might find it, what disc it came on…' : 'Known issues, why you keep this one, library compatibility…';
+    $('#mSubmit').textContent = st === 'never' ? 'Mark as never released' : st === 'wanted' ? 'Add to my list' : existing ? 'Save' : 'Add & upload files';
+  };
+  f.elements.status.addEventListener('change', syncStatus);
   note.style.cssText = 'margin:-4px 0 0;grid-column:1 / -1';
   f.elements.arch.closest('.f').after(note);
   let auto = { min_os: '', max_os: '' };
@@ -1252,6 +1285,7 @@ function versionModal(existing) {
   };
   f.elements.arch.addEventListener('change', () => applyArch(true));
   applyArch(!existing);
+  syncStatus();
 }
 // Folder-shaped items macOS treats as one file; a browser can only upload them zipped.
 const BUNDLE_RE = /\.(app|pkg|mpkg|sparsebundle|bundle|rtfd|prefPane|plugin|framework)$/i;
